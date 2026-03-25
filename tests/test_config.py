@@ -224,8 +224,8 @@ coding_plan:
     assert "not set" in str(exc_info.value)
 
 
-def test_missing_env_var_non_strict_mode_logs_warning(tmp_path, monkeypatch, caplog):
-    """Test that missing env var logs warning in non-strict mode."""
+def test_missing_env_var_non_strict_mode_raises_on_empty_api_key(tmp_path, monkeypatch, caplog):
+    """Test that empty api_key (from missing env var) raises ConfigurationError."""
     # Ensure the env var is not set
     monkeypatch.delenv("ANOTHER_MISSING_KEY", raising=False)
 
@@ -244,16 +244,8 @@ coding_plan:
 
     import logging
     with caplog.at_level(logging.WARNING):
-        config = Config.load(str(config_file), strict_env_vars=False)
-
-    # Should not raise, but should log warning
-    assert config.coding_plan.api_key == ""
-
-    # Check warning was logged
-    assert any(
-        "ANOTHER_MISSING_KEY" in record.message and "not set" in record.message
-        for record in caplog.records
-    ), f"Expected warning log not found. Got: {[r.message for r in caplog.records]}"
+        with pytest.raises(ConfigurationError, match="api_key is empty"):
+            Config.load(str(config_file), strict_env_vars=False)
 
 
 def test_missing_env_var_multiple_occurrences(tmp_path, monkeypatch):

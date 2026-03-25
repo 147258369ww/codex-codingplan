@@ -58,6 +58,7 @@ def register_routes(
             request,
             actual_model,
         )
+        logger.info("Converted request: %s", json.dumps(chat_request, ensure_ascii=False, indent=2))
 
         try:
             if request.stream:
@@ -112,18 +113,86 @@ async def _stream_response(
     Yields:
         SSE formatted events.
     """
-    response_id = None
+    import time
+    import uuid
+
+    response_id = "resp_" + str(uuid.uuid4())[:8]
+    item_id = "msg_" + str(uuid.uuid4())[:8]
     full_content = ""
     usage = {}
+    sequence_number = 0
+    output_index = 0
+    content_index = 0
+    initialized = False
+
+    def next_seq():
+        nonlocal sequence_number
+        sequence_number += 1
+        return sequence_number
 
     try:
         stream = await client.chat(chat_request, stream=True)
+        logger.info("Stream started, waiting for events...")
 
         async for event in stream:
+            logger.debug("Processing event: %s", json.dumps(event, ensure_ascii=False)[:300])
+
+            # Track response ID from upstream
+            if event.get("id"):
+                chat_id = event["id"]
+                if chat_id.startswith("chatcmpl-"):
+                    response_id = "resp_" + chat_id[9:]
+
+            # Track usage if present
+            if event.get("usage"):
+                usage = event["usage"]
+
             if event.get("done"):
-                # Send completed event
+                # Send completion events in correct order
+                # 1. response.output_text.done
+                text_done_event = {
+                    "type": "response.output_text.done",
+                    "item_id": item_id,
+                    "output_index": output_index,
+                    "content_index": content_index,
+                    "text": full_content,
+                    "sequence_number": next_seq(),
+                }
+                yield f"data: {json.dumps(text_done_event)}\n\n"
+
+                # 2. response.content_part.done
+                content_part_done = {
+                    "type": "response.content_part.done",
+                    "item_id": item_id,
+                    "output_index": output_index,
+                    "content_index": content_index,
+                    "part": {
+                        "type": "output_text",
+                        "text": full_content,
+                    },
+                    "sequence_number": next_seq(),
+                }
+                yield f"data: {json.dumps(content_part_done)}\n\n"
+
+                # 3. response.output_item.done
+                output_item = {
+                    "id": item_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": full_content}],
+                }
+                output_item_done = {
+                    "type": "response.output_item.done",
+                    "output_index": output_index,
+                    "item": output_item,
+                    "sequence_number": next_seq(),
+                }
+                yield f"data: {json.dumps(output_item_done)}\n\n"
+
+                # 4. response.completed
+                logger.info("Stream done, sending completed event")
                 completed = converter.create_completed_event(
-                    response_id or "resp_unknown",
+                    response_id,
                     model,
                     full_content,
                     usage,
@@ -132,31 +201,70 @@ async def _stream_response(
                 yield "data: [DONE]\n\n"
                 break
 
-            # Track response ID
-            if not response_id and event.get("id"):
-                chat_id = event["id"]
-                if chat_id.startswith("chatcmpl-"):
-                    response_id = "resp_" + chat_id[9:]
-                else:
-                    response_id = "resp_" + chat_id
+            # Send initialization events on first content
+            if not initialized:
+                # 1. response.created
+                created_event = {
+                    "type": "response.created",
+                    "response": {
+                        "id": response_id,
+                        "object": "response",
+                        "created_at": time.time(),
+                        "status": "in_progress",
+                        "model": model,
+                    },
+                    "sequence_number": next_seq(),
+                }
+                yield f"data: {json.dumps(created_event)}\n\n"
 
-            # Track usage if present
-            if event.get("usage"):
-                usage = event["usage"]
+                # 2. response.output_item.added
+                output_item_added = {
+                    "type": "response.output_item.added",
+                    "output_index": output_index,
+                    "item": {
+                        "id": item_id,
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [],
+                    },
+                    "sequence_number": next_seq(),
+                }
+                yield f"data: {json.dumps(output_item_added)}\n\n"
+
+                # 3. response.content_part.added
+                content_part_added = {
+                    "type": "response.content_part.added",
+                    "item_id": item_id,
+                    "output_index": output_index,
+                    "content_index": content_index,
+                    "part": {"type": "output_text", "text": ""},
+                    "sequence_number": next_seq(),
+                }
+                yield f"data: {json.dumps(content_part_added)}\n\n"
+
+                initialized = True
 
             # Convert event
             responses_event = converter.to_responses_stream_event(
                 event,
-                response_id or "resp_unknown",
+                response_id,
                 model,
             )
 
             if responses_event:
+                # Add required fields to the event
+                responses_event["item_id"] = item_id
+                responses_event["content_index"] = content_index
+                responses_event["sequence_number"] = next_seq()
+
+                logger.debug("Converted event: %s", json.dumps(responses_event, ensure_ascii=False)[:200])
                 # Track content for final event
                 if responses_event.get("delta"):
                     full_content += responses_event["delta"]
 
                 yield f"data: {json.dumps(responses_event)}\n\n"
+            else:
+                logger.debug("Event returned None (filtered out)")
 
     except CodingPlanAPIError as e:
         # Yield error event for API errors during streaming

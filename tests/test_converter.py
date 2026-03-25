@@ -10,11 +10,12 @@ class TestConverterRequestConversion:
         self.converter = Converter()
 
     def test_convert_simple_string_input(self):
-        """Convert string input to messages array."""
+        """Convert string input to messages array, using resolved model."""
         req = ResponsesRequest(model="gpt-5", input="Hello")
-        result = self.converter.to_chat_completions_request(req, "default-model")
+        result = self.converter.to_chat_completions_request(req, "qwen3.5-plus")
 
-        assert result["model"] == "gpt-5"
+        # Model should be the resolved_model parameter, not the request's model
+        assert result["model"] == "qwen3.5-plus"
         assert len(result["messages"]) == 1
         assert result["messages"][0]["role"] == "user"
         assert result["messages"][0]["content"] == "Hello"

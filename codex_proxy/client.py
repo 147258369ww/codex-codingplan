@@ -71,6 +71,8 @@ class CodingPlanClient:
         if stream:
             return self._request_stream(client, request)
 
+        logger.debug("Sending request to %s: %s", f"{self.base_url}/chat/completions", json.dumps(request, ensure_ascii=False, indent=2))
+
         response = await client.post(
             f"{self.base_url}/chat/completions",
             json=request,
@@ -82,6 +84,7 @@ class CodingPlanClient:
 
         if response.status_code >= 400:
             error_data = response.json()
+            logger.error("API error response: %s", json.dumps(error_data, ensure_ascii=False, indent=2))
             raise CodingPlanAPIError(response.status_code, error_data)
 
         return response.json()
@@ -115,6 +118,7 @@ class CodingPlanClient:
                     parsed_error = json.loads(error_data)
                 except json.JSONDecodeError:
                     parsed_error = {"error": {"message": error_data.decode("utf-8", errors="replace")}}
+                logger.error("API error response (stream): %s", json.dumps(parsed_error, ensure_ascii=False, indent=2))
                 raise CodingPlanAPIError(
                     response.status_code,
                     parsed_error,
@@ -132,6 +136,7 @@ class CodingPlanClient:
 
                 try:
                     event = json.loads(data)
+                    logger.debug("Received SSE event: %s", json.dumps(event, ensure_ascii=False)[:200])
                     yield event
                 except json.JSONDecodeError:
                     logger.debug("Malformed JSON in SSE event: %s", data)

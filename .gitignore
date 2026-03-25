@@ -43,3 +43,7 @@ htmlcov/
 # Local config
 config.yaml
 .env
+
+# Logs
+logs/
+*.log

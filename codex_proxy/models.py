@@ -26,7 +26,14 @@ class InputRefusalContent(BaseModel):
     refusal: str
 
 
-InputContent = Union[InputTextContent, InputImageContent, InputRefusalContent, str]
+class OutputTextContent(BaseModel):
+    """Output text content item (for history messages)."""
+
+    type: Literal["output_text"] = "output_text"
+    text: str
+
+
+InputContent = Union[InputTextContent, InputImageContent, InputRefusalContent, OutputTextContent, str]
 
 
 class InputMessage(BaseModel):
@@ -41,8 +48,8 @@ class InputMessage(BaseModel):
 class Message(BaseModel):
     """Chat message (legacy format)."""
 
-    role: Literal["system", "user", "assistant", "tool"]
-    content: str
+    role: Literal["system", "user", "assistant", "developer", "tool"]
+    content: Union[str, list[InputContent]]
 
 
 class ResponsesRequest(BaseModel):

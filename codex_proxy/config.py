@@ -47,6 +47,11 @@ class CodingPlanConfig:
     def __post_init__(self):
         if self.model_mapping is None:
             self.model_mapping = {}
+        if not self.api_key:
+            raise ConfigurationError(
+                "coding_plan.api_key is empty. Set CODING_PLAN_API_KEY environment variable "
+                "or provide a value in config.yaml."
+            )
 
     def resolve_model(self, requested_model: str) -> str:
         """Resolve a requested model name to the actual model name.

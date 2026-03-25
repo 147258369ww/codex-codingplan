@@ -13,13 +13,13 @@ class Converter:
     def to_chat_completions_request(
         self,
         responses_request: ResponsesRequest,
-        default_model: str,
+        resolved_model: str,
     ) -> dict[str, Any]:
         """Convert Responses API request to Chat Completions request.
 
         Args:
             responses_request: The Responses API request.
-            default_model: Default model to use if not specified.
+            resolved_model: The resolved model name to use (after model mapping).
 
         Returns:
             Chat Completions compatible request dict.
@@ -29,9 +29,9 @@ class Converter:
             responses_request.instructions,
         )
 
-        # Build request
+        # Build request - use resolved_model directly (already mapped via config)
         request: dict[str, Any] = {
-            "model": responses_request.model or default_model,
+            "model": resolved_model,
             "messages": messages,
             "stream": responses_request.stream,
         }
@@ -47,7 +47,25 @@ class Converter:
             request["top_p"] = responses_request.top_p
 
         if responses_request.tools is not None:
-            request["tools"] = responses_request.tools
+            # Filter tools to only include valid function tools
+            # Chat Completions API requires type="function" with a "function" object
+            valid_tools = []
+            for tool in responses_request.tools:
+                if isinstance(tool, dict):
+                    if tool.get("type") == "function" and "function" in tool:
+                        valid_tools.append(tool)
+                    elif tool.get("type") == "function" and "name" in tool:
+                        # Convert simplified format to full format
+                        valid_tools.append({
+                            "type": "function",
+                            "function": {
+                                "name": tool["name"],
+                                "description": tool.get("description", ""),
+                                "parameters": tool.get("parameters", {}),
+                            }
+                        })
+            if valid_tools:
+                request["tools"] = valid_tools
 
         return request
 
@@ -208,7 +226,7 @@ class Converter:
         finish_reason = choice.get("finish_reason")
 
         # Skip role-only events
-        if "role" in delta and "content" not in delta and not finish_reason:
+        if "role" in delta and "content" not in delta and "reasoning_content" not in delta and not finish_reason:
             return None
 
         # Handle finish
@@ -218,12 +236,22 @@ class Converter:
                 "output_index": 0,
             }
 
-        # Handle content delta
+        # Handle content delta - check both "content" and "reasoning_content"
         content = delta.get("content")
+        # Some models (like qwen3.5-plus) use reasoning_content for thinking tokens
+        reasoning_content = delta.get("reasoning_content")
+
         if content:
             return {
                 "type": "response.output_text.delta",
                 "delta": content,
+                "output_index": 0,
+            }
+        elif reasoning_content:
+            # Include reasoning content in the output
+            return {
+                "type": "response.output_text.delta",
+                "delta": reasoning_content,
                 "output_index": 0,
             }
 
