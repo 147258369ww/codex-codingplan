@@ -10,6 +10,10 @@ Proxy service that adapts OpenAI Codex (Responses API) to Alibaba Cloud Coding P
 - Environment variable substitution in configuration
 - Health check endpoint for monitoring
 
+## Requirements
+
+- Python >=3.10
+
 ## Installation
 
 ```bash
