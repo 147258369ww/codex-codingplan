@@ -1,11 +1,14 @@
 """HTTP client for Coding Plan API."""
 
 import json
+import logging
 from typing import Any, AsyncGenerator
 
 import httpx
 
 from codex_proxy.config import CodingPlanConfig
+
+logger = logging.getLogger(__name__)
 
 
 class CodingPlanAPIError(Exception):
@@ -37,6 +40,14 @@ class CodingPlanClient:
         if self._client:
             await self._client.aclose()
             self._client = None
+
+    async def __aenter__(self) -> "CodingPlanClient":
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Exit async context manager and close client."""
+        await self.close()
 
     async def chat(
         self,
@@ -100,9 +111,13 @@ class CodingPlanClient:
         ) as response:
             if response.status_code >= 400:
                 error_data = await response.aread()
+                try:
+                    parsed_error = json.loads(error_data)
+                except json.JSONDecodeError:
+                    parsed_error = {"error": {"message": error_data.decode("utf-8", errors="replace")}}
                 raise CodingPlanAPIError(
                     response.status_code,
-                    json.loads(error_data),
+                    parsed_error,
                 )
 
             async for line in response.aiter_lines():
@@ -119,4 +134,5 @@ class CodingPlanClient:
                     event = json.loads(data)
                     yield event
                 except json.JSONDecodeError:
+                    logger.debug("Malformed JSON in SSE event: %s", data)
                     continue

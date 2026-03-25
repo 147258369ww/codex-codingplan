@@ -223,3 +223,70 @@ class TestCodingPlanClient:
         assert exc_info.value.status_code == 400
         assert exc_info.value.error_data["error"]["type"] == "invalid_request_error"
         assert exc_info.value.error_data["error"]["code"] == "invalid_api_key"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_async_context_manager(self, client):
+        """Test that client works as async context manager."""
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(200, json={"id": "test"})
+        )
+
+        async with client as ctx_client:
+            assert ctx_client is client
+            result = await ctx_client.chat({"model": "test", "messages": []})
+            assert result["id"] == "test"
+
+        # Client should be closed after context exit
+        assert client._client is None
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_streaming_error_malformed_json(self, client):
+        """Test error handling when streaming error has malformed JSON."""
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(
+                500,
+                content=b"Internal Server Error - Not JSON",
+            )
+        )
+
+        with pytest.raises(CodingPlanAPIError) as exc_info:
+            async for _ in await client.chat(
+                {"model": "test", "messages": [], "stream": True},
+                stream=True,
+            ):
+                pass
+
+        assert exc_info.value.status_code == 500
+        assert "Internal Server Error" in exc_info.value.error_data["error"]["message"]
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_streaming_skips_malformed_json_events(self, client):
+        """Test that malformed JSON events in stream are skipped."""
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(
+                200,
+                content=(
+                    b'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n'
+                    b'data: {invalid json}\n\n'
+                    b'data: {"choices": [{"delta": {"content": " world"}}]}\n\n'
+                    b'data: [DONE]\n\n'
+                ),
+                headers={"content-type": "text/event-stream"},
+            )
+        )
+
+        events = []
+        async for event in await client.chat(
+            {"model": "test", "messages": [], "stream": True},
+            stream=True,
+        ):
+            events.append(event)
+
+        # Malformed event should be skipped
+        assert len(events) == 3
+        assert events[0]["choices"][0]["delta"]["content"] == "Hello"
+        assert events[1]["choices"][0]["delta"]["content"] == " world"
+        assert events[2] == {"done": True}
