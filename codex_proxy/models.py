@@ -20,7 +20,7 @@ class ResponsesRequest(BaseModel):
     instructions: str | None = None
     tools: list[dict[str, Any]] | None = None
     stream: bool = False
-    max_output_tokens: int | None = Field(default=None, validation_alias="maxOutputTokens")
+    max_output_tokens: int | None = Field(default=None, validation_alias="maxOutputTokens", serialization_alias="maxOutputTokens")
     temperature: float | None = None
     top_p: float | None = None
 

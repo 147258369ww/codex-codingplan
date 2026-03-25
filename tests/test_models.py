@@ -7,6 +7,10 @@ from codex_proxy.models import (
     OutputContent,
     OutputMessage,
     Usage,
+    StreamDeltaEvent,
+    StreamDoneEvent,
+    StreamCompletedEvent,
+    ErrorResponse,
 )
 
 
@@ -66,3 +70,63 @@ class TestResponsesResponse:
         assert response.id == "resp_123"
         assert response.output_text == "Hello!"
         assert response.usage.total_tokens == 15
+
+
+class TestStreamDeltaEvent:
+    def test_delta_event_creation(self):
+        event = StreamDeltaEvent(delta="Hello")
+        assert event.type == "response.output_text.delta"
+        assert event.delta == "Hello"
+        assert event.output_index == 0
+
+    def test_delta_event_with_custom_output_index(self):
+        event = StreamDeltaEvent(delta="World", output_index=2)
+        assert event.output_index == 2
+
+
+class TestStreamDoneEvent:
+    def test_done_event_creation(self):
+        event = StreamDoneEvent()
+        assert event.type == "response.output_text.done"
+        assert event.output_index == 0
+
+    def test_done_event_with_custom_output_index(self):
+        event = StreamDoneEvent(output_index=1)
+        assert event.output_index == 1
+
+
+class TestStreamCompletedEvent:
+    def test_completed_event_creation(self):
+        response = ResponsesResponse(
+            id="resp_456",
+            created_at=1741369938.0,
+            status="completed",
+            model="gpt-5",
+            output=[
+                OutputMessage(
+                    id="msg_456",
+                    type="message",
+                    role="assistant",
+                    content=[OutputContent(type="output_text", text="Done!")],
+                )
+            ],
+            output_text="Done!",
+            usage=Usage(input_tokens=5, output_tokens=3, total_tokens=8),
+        )
+        event = StreamCompletedEvent(response=response)
+        assert event.type == "response.completed"
+        assert event.response.id == "resp_456"
+        assert event.response.status == "completed"
+
+
+class TestErrorResponse:
+    def test_error_response_creation(self):
+        error = ErrorResponse(error={"message": "Something went wrong", "type": "invalid_request_error"})
+        assert error.error["message"] == "Something went wrong"
+        assert error.error["type"] == "invalid_request_error"
+
+    def test_error_response_serialization(self):
+        error = ErrorResponse(error={"message": "Rate limit exceeded", "type": "rate_limit_error"})
+        json_data = error.model_dump()
+        assert "error" in json_data
+        assert json_data["error"]["message"] == "Rate limit exceeded"
