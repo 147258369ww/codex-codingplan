@@ -1,6 +1,7 @@
 """API route handlers."""
 
 import json
+import logging
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -10,6 +11,8 @@ from codex_proxy.client import CodingPlanClient, CodingPlanAPIError
 from codex_proxy.config import Config
 from codex_proxy.converter import Converter
 from codex_proxy.models import ResponsesRequest
+
+logger = logging.getLogger(__name__)
 
 
 def register_routes(
@@ -41,8 +44,14 @@ def register_routes(
         Returns:
             Responses API response.
         """
+        logger.info("=== Incoming request ===")
+        logger.info(f"Model: {request.model}")
+        logger.info(f"Stream: {request.stream}")
+        logger.info(f"Input type: {type(request.input).__name__}")
+
         # Resolve model name (e.g., gpt-5.4 -> qwen3.5-plus)
         actual_model = config.coding_plan.resolve_model(request.model)
+        logger.info(f"Resolved model: {actual_model}")
 
         # Convert request
         chat_request = converter.to_chat_completions_request(
