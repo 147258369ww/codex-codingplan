@@ -41,16 +41,19 @@ def register_routes(
         Returns:
             Responses API response.
         """
+        # Resolve model name (e.g., gpt-5.4 -> qwen3.5-plus)
+        actual_model = config.coding_plan.resolve_model(request.model)
+
         # Convert request
         chat_request = converter.to_chat_completions_request(
             request,
-            config.coding_plan.model,
+            actual_model,
         )
 
         try:
             if request.stream:
                 return StreamingResponse(
-                    _stream_response(client, converter, chat_request, request.model),
+                    _stream_response(client, converter, chat_request, actual_model),
                     media_type="text/event-stream",
                 )
             else:

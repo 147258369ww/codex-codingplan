@@ -42,6 +42,24 @@ class CodingPlanConfig:
     api_key: str
     model: str
     timeout: int
+    model_mapping: dict[str, str] = None  # Map request model names to actual model names
+
+    def __post_init__(self):
+        if self.model_mapping is None:
+            self.model_mapping = {}
+
+    def resolve_model(self, requested_model: str) -> str:
+        """Resolve a requested model name to the actual model name.
+
+        Args:
+            requested_model: The model name from the request.
+
+        Returns:
+            The actual model name to use.
+        """
+        if requested_model in self.model_mapping:
+            return self.model_mapping[requested_model]
+        return requested_model or self.model
 
 
 @dataclass

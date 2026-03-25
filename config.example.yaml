@@ -8,8 +8,14 @@ server:
 coding_plan:
   base_url: "https://coding.dashscope.aliyuncs.com/v1"
   api_key: "${CODING_PLAN_API_KEY}"  # Set via environment variable
-  model: "qwen-coder-plus"
+  model: "qwen3.5-plus"
   timeout: 300
+  model_mapping:
+    # Map Codex model names to Coding Plan models
+    "gpt-5.4": "qwen3.5-plus"
+    "gpt-5": "qwen3.5-plus"
+    "gpt-4.1": "qwen3.5-plus"
+    "o4-mini": "qwen3.5-plus"
 
 logging:
   level: "INFO"
