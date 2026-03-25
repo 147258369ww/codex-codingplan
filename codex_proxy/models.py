@@ -5,8 +5,41 @@ from typing import Any, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class InputTextContent(BaseModel):
+    """Input text content item."""
+
+    type: Literal["input_text"] = "input_text"
+    text: str
+
+
+class InputImageContent(BaseModel):
+    """Input image content item."""
+
+    type: Literal["input_image"]
+    image_url: str
+
+
+class InputRefusalContent(BaseModel):
+    """Input refusal content item."""
+
+    type: Literal["refusal"]
+    refusal: str
+
+
+InputContent = Union[InputTextContent, InputImageContent, InputRefusalContent, str]
+
+
+class InputMessage(BaseModel):
+    """Input message in Responses API format."""
+
+    type: Literal["message"] = "message"
+    role: Literal["system", "user", "assistant", "developer", "tool"]
+    content: Union[str, list[InputContent]]
+
+
+# Legacy Message for backwards compatibility
 class Message(BaseModel):
-    """Chat message."""
+    """Chat message (legacy format)."""
 
     role: Literal["system", "user", "assistant", "tool"]
     content: str
@@ -16,13 +49,16 @@ class ResponsesRequest(BaseModel):
     """Responses API request model."""
 
     model: str
-    input: Union[str, list[Message]]
+    input: Union[str, list[InputMessage], list[Message]]
     instructions: str | None = None
     tools: list[dict[str, Any]] | None = None
     stream: bool = False
     max_output_tokens: int | None = Field(default=None, validation_alias="maxOutputTokens", serialization_alias="maxOutputTokens")
     temperature: float | None = None
     top_p: float | None = None
+    previous_response_id: str | None = None
+    truncation: str | None = None
+    metadata: dict[str, Any] | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 

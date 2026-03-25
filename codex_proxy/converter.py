@@ -77,12 +77,53 @@ class Converter:
         else:
             # input_value is a list of messages
             for msg in input_value:
-                if hasattr(msg, "model_dump"):
-                    messages.append(msg.model_dump())
-                else:
-                    messages.append(msg)
+                converted = self._convert_message(msg)
+                messages.append(converted)
 
         return messages
+
+    def _convert_message(self, msg: Any) -> dict[str, Any]:
+        """Convert a single message to Chat Completions format.
+
+        Args:
+            msg: Message object (InputMessage, Message, or dict).
+
+        Returns:
+            Chat Completions message dict.
+        """
+        if hasattr(msg, "model_dump"):
+            data = msg.model_dump()
+        elif isinstance(msg, dict):
+            data = msg
+        else:
+            return {"role": "user", "content": str(msg)}
+
+        role = data.get("role", "user")
+        content = data.get("content")
+
+        # Map 'developer' role to 'system'
+        if role == "developer":
+            role = "system"
+
+        # Convert content
+        if isinstance(content, str):
+            return {"role": role, "content": content}
+        elif isinstance(content, list):
+            # Extract text from content items
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get("type") == "input_text":
+                        text_parts.append(item.get("text", ""))
+                    elif item.get("type") == "text":
+                        text_parts.append(item.get("text", ""))
+                    elif isinstance(item.get("text"), str):
+                        text_parts.append(item["text"])
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            return {"role": role, "content": "\n".join(text_parts)}
+        else:
+            return {"role": role, "content": str(content) if content else ""}
 
     def to_responses_response(
         self,
