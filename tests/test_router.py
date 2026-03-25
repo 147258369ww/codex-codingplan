@@ -130,3 +130,107 @@ class TestRouter:
         content = response.content.decode()
         assert "response.output_text.delta" in content
         assert "response.completed" in content
+
+    @respx.mock
+    def test_api_error_unauthorized(self, client):
+        """Test API error (401 Unauthorized) is properly returned."""
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(
+                401,
+                json={
+                    "error": {
+                        "type": "invalid_request_error",
+                        "message": "Invalid API key",
+                    }
+                },
+            )
+        )
+
+        response = client.post(
+            "/v1/responses",
+            json={
+                "model": "gpt-5",
+                "input": "Hi",
+            },
+        )
+
+        assert response.status_code == 401
+        data = response.json()
+        assert data["detail"]["type"] == "invalid_request_error"
+        assert data["detail"]["message"] == "Invalid API key"
+
+    @respx.mock
+    def test_api_error_with_null_error_data(self, client):
+        """Test API error handles null/missing error data gracefully."""
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(
+                500,
+                json={},
+            )
+        )
+
+        response = client.post(
+            "/v1/responses",
+            json={
+                "model": "gpt-5",
+                "input": "Hi",
+            },
+        )
+
+        assert response.status_code == 500
+        data = response.json()
+        assert data["detail"]["type"] == "api_error"
+        assert "message" in data["detail"]
+
+    @respx.mock
+    def test_streaming_api_error(self, client):
+        """Test streaming error handling yields error event."""
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(
+                401,
+                content=b'{"error": {"type": "invalid_request_error", "message": "Invalid API key"}}',
+                headers={"content-type": "text/event-stream"},
+            )
+        )
+
+        response = client.post(
+            "/v1/responses",
+            json={
+                "model": "gpt-5",
+                "input": "Hi",
+                "stream": True,
+            },
+        )
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert '"type": "error"' in content
+        assert "invalid_request_error" in content
+        assert "Invalid API key" in content
+        assert "[DONE]" in content
+
+    @respx.mock
+    def test_streaming_with_null_error_data(self, client):
+        """Test streaming handles null/missing error data gracefully."""
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(
+                500,
+                content=b'{}',
+                headers={"content-type": "text/event-stream"},
+            )
+        )
+
+        response = client.post(
+            "/v1/responses",
+            json={
+                "model": "gpt-5",
+                "input": "Hi",
+                "stream": True,
+            },
+        )
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert '"type": "error"' in content
+        assert "api_error" in content
+        assert "[DONE]" in content

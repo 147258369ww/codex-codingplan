@@ -59,11 +59,26 @@ def register_routes(
                 return converter.to_responses_response(chat_response)
 
         except CodingPlanAPIError as e:
+            # Defensive null checks with safe defaults
+            error_data = e.error_data or {}
+            error_obj = error_data.get("error") or {}
+            error_type = error_obj.get("type") if isinstance(error_obj, dict) else "api_error"
+            error_message = error_obj.get("message") if isinstance(error_obj, dict) else str(e)
+
             raise HTTPException(
                 status_code=e.status_code,
                 detail={
-                    "type": e.error_data.get("error", {}).get("type", "api_error"),
-                    "message": e.error_data.get("error", {}).get("message", str(e)),
+                    "type": error_type or "api_error",
+                    "message": error_message or "An API error occurred",
+                },
+            )
+        except Exception as e:
+            # Catch-all for unexpected errors
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "type": "internal_error",
+                    "message": f"An unexpected error occurred: {str(e)}",
                 },
             )
 
@@ -89,43 +104,73 @@ async def _stream_response(
     full_content = ""
     usage = {}
 
-    stream = await client.chat(chat_request, stream=True)
+    try:
+        stream = await client.chat(chat_request, stream=True)
 
-    async for event in stream:
-        if event.get("done"):
-            # Send completed event
-            completed = converter.create_completed_event(
+        async for event in stream:
+            if event.get("done"):
+                # Send completed event
+                completed = converter.create_completed_event(
+                    response_id or "resp_unknown",
+                    model,
+                    full_content,
+                    usage,
+                )
+                yield f"data: {json.dumps(completed)}\n\n"
+                yield "data: [DONE]\n\n"
+                break
+
+            # Track response ID
+            if not response_id and event.get("id"):
+                chat_id = event["id"]
+                if chat_id.startswith("chatcmpl-"):
+                    response_id = "resp_" + chat_id[9:]
+                else:
+                    response_id = "resp_" + chat_id
+
+            # Track usage if present
+            if event.get("usage"):
+                usage = event["usage"]
+
+            # Convert event
+            responses_event = converter.to_responses_stream_event(
+                event,
                 response_id or "resp_unknown",
                 model,
-                full_content,
-                usage,
             )
-            yield f"data: {json.dumps(completed)}\n\n"
-            yield "data: [DONE]\n\n"
-            break
 
-        # Track response ID
-        if not response_id and event.get("id"):
-            chat_id = event["id"]
-            if chat_id.startswith("chatcmpl-"):
-                response_id = "resp_" + chat_id[9:]
-            else:
-                response_id = "resp_" + chat_id
+            if responses_event:
+                # Track content for final event
+                if responses_event.get("delta"):
+                    full_content += responses_event["delta"]
 
-        # Track usage if present
-        if event.get("usage"):
-            usage = event["usage"]
+                yield f"data: {json.dumps(responses_event)}\n\n"
 
-        # Convert event
-        responses_event = converter.to_responses_stream_event(
-            event,
-            response_id or "resp_unknown",
-            model,
-        )
+    except CodingPlanAPIError as e:
+        # Yield error event for API errors during streaming
+        error_data = e.error_data or {}
+        error_obj = error_data.get("error") or {}
+        error_type = error_obj.get("type") if isinstance(error_obj, dict) else "api_error"
+        error_message = error_obj.get("message") if isinstance(error_obj, dict) else str(e)
 
-        if responses_event:
-            # Track content for final event
-            if responses_event.get("delta"):
-                full_content += responses_event["delta"]
+        error_event = {
+            "type": "error",
+            "error": {
+                "type": error_type or "api_error",
+                "message": error_message or "An API error occurred",
+            },
+        }
+        yield f"data: {json.dumps(error_event)}\n\n"
+        yield "data: [DONE]\n\n"
 
-            yield f"data: {json.dumps(responses_event)}\n\n"
+    except Exception as e:
+        # Yield error event for unexpected errors during streaming
+        error_event = {
+            "type": "error",
+            "error": {
+                "type": "internal_error",
+                "message": f"An unexpected error occurred: {str(e)}",
+            },
+        }
+        yield f"data: {json.dumps(error_event)}\n\n"
+        yield "data: [DONE]\n\n"
