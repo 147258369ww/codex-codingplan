@@ -1,0 +1,238 @@
+"""API format converter between Responses API and Chat Completions API."""
+
+import time
+import uuid
+from typing import Any
+
+from codex_proxy.models import ResponsesRequest
+
+
+class Converter:
+    """Converts between Responses API and Chat Completions API formats."""
+
+    def to_chat_completions_request(
+        self,
+        responses_request: ResponsesRequest,
+        default_model: str,
+    ) -> dict[str, Any]:
+        """Convert Responses API request to Chat Completions request.
+
+        Args:
+            responses_request: The Responses API request.
+            default_model: Default model to use if not specified.
+
+        Returns:
+            Chat Completions compatible request dict.
+        """
+        messages = self._convert_input(
+            responses_request.input,
+            responses_request.instructions,
+        )
+
+        # Build request
+        request: dict[str, Any] = {
+            "model": responses_request.model or default_model,
+            "messages": messages,
+            "stream": responses_request.stream,
+        }
+
+        # Add optional fields
+        if responses_request.max_output_tokens is not None:
+            request["max_tokens"] = responses_request.max_output_tokens
+
+        if responses_request.temperature is not None:
+            request["temperature"] = responses_request.temperature
+
+        if responses_request.top_p is not None:
+            request["top_p"] = responses_request.top_p
+
+        if responses_request.tools is not None:
+            request["tools"] = responses_request.tools
+
+        return request
+
+    def _convert_input(
+        self,
+        input: str | list,
+        instructions: str | None,
+    ) -> list[dict[str, str]]:
+        """Convert input field to messages array.
+
+        Args:
+            input: String or message list.
+            instructions: Optional system instructions.
+
+        Returns:
+            List of message dicts.
+        """
+        messages = []
+
+        # Add instructions as system message first
+        if instructions:
+            messages.append({"role": "system", "content": instructions})
+
+        # Handle input
+        if isinstance(input, str):
+            messages.append({"role": "user", "content": input})
+        else:
+            # input is a list of messages
+            for msg in input:
+                if hasattr(msg, "model_dump"):
+                    messages.append(msg.model_dump())
+                else:
+                    messages.append(msg)
+
+        return messages
+
+    def to_responses_response(
+        self,
+        chat_response: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Convert Chat Completions response to Responses API format.
+
+        Args:
+            chat_response: Chat Completions API response.
+
+        Returns:
+            Responses API compatible response dict.
+        """
+        # Generate response ID
+        chat_id = chat_response.get("id", "")
+        if chat_id.startswith("chatcmpl-"):
+            response_id = "resp_" + chat_id[9:]  # Remove "chatcmpl-" prefix
+        else:
+            response_id = "resp_" + str(uuid.uuid4())[:8]
+
+        # Extract content
+        choices = chat_response.get("choices", [])
+        content_text = ""
+        if choices and "message" in choices[0]:
+            content_text = choices[0]["message"].get("content", "")
+
+        # Build output message
+        output_message = {
+            "id": "msg_" + str(uuid.uuid4())[:8],
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "output_text",
+                    "text": content_text,
+                }
+            ],
+        }
+
+        # Extract usage
+        usage = chat_response.get("usage", {})
+
+        return {
+            "id": response_id,
+            "object": "response",
+            "created_at": time.time(),
+            "status": "completed",
+            "model": chat_response.get("model", ""),
+            "output": [output_message],
+            "output_text": content_text,
+            "usage": {
+                "input_tokens": usage.get("prompt_tokens", 0),
+                "output_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0),
+            },
+        }
+
+    def to_responses_stream_event(
+        self,
+        chat_event: dict[str, Any],
+        response_id: str,
+        model: str,
+    ) -> dict[str, Any] | None:
+        """Convert Chat Completions stream event to Responses API event.
+
+        Args:
+            chat_event: Chat Completions SSE event data.
+            response_id: The response ID for this stream.
+            model: The model name.
+
+        Returns:
+            Responses API event dict, or None if event should be skipped.
+        """
+        choices = chat_event.get("choices", [])
+        if not choices:
+            return None
+
+        choice = choices[0]
+        delta = choice.get("delta", {})
+        finish_reason = choice.get("finish_reason")
+
+        # Skip role-only events
+        if "role" in delta and "content" not in delta and not finish_reason:
+            return None
+
+        # Handle finish
+        if finish_reason:
+            return {
+                "type": "response.output_text.done",
+                "output_index": 0,
+            }
+
+        # Handle content delta
+        content = delta.get("content")
+        if content:
+            return {
+                "type": "response.output_text.delta",
+                "delta": content,
+                "output_index": 0,
+            }
+
+        return None
+
+    def create_completed_event(
+        self,
+        response_id: str,
+        model: str,
+        full_content: str,
+        usage: dict[str, int],
+    ) -> dict[str, Any]:
+        """Create a response.completed event.
+
+        Args:
+            response_id: The response ID.
+            model: The model name.
+            full_content: The complete response content.
+            usage: Token usage dict.
+
+        Returns:
+            response.completed event dict.
+        """
+        # Build output message
+        output_message = {
+            "id": "msg_" + str(uuid.uuid4())[:8],
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "output_text",
+                    "text": full_content,
+                }
+            ],
+        }
+
+        response = {
+            "id": response_id,
+            "object": "response",
+            "created_at": time.time(),
+            "status": "completed",
+            "model": model,
+            "output": [output_message],
+            "output_text": full_content,
+            "usage": {
+                "input_tokens": usage.get("prompt_tokens", 0),
+                "output_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0),
+            },
+        }
+
+        return {
+            "type": "response.completed",
+            "response": response,
+        }
