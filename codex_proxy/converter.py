@@ -53,13 +53,13 @@ class Converter:
 
     def _convert_input(
         self,
-        input: str | list,
+        input_value: str | list,
         instructions: str | None,
     ) -> list[dict[str, str]]:
         """Convert input field to messages array.
 
         Args:
-            input: String or message list.
+            input_value: String or message list.
             instructions: Optional system instructions.
 
         Returns:
@@ -72,11 +72,11 @@ class Converter:
             messages.append({"role": "system", "content": instructions})
 
         # Handle input
-        if isinstance(input, str):
-            messages.append({"role": "user", "content": input})
+        if isinstance(input_value, str):
+            messages.append({"role": "user", "content": input_value})
         else:
-            # input is a list of messages
-            for msg in input:
+            # input_value is a list of messages
+            for msg in input_value:
                 if hasattr(msg, "model_dump"):
                     messages.append(msg.model_dump())
                 else:
@@ -103,11 +103,13 @@ class Converter:
         else:
             response_id = "resp_" + str(uuid.uuid4())[:8]
 
-        # Extract content
+        # Extract content with defensive check for empty choices
         choices = chat_response.get("choices", [])
         content_text = ""
-        if choices and "message" in choices[0]:
-            content_text = choices[0]["message"].get("content", "")
+        if choices:
+            choice = choices[0]
+            if "message" in choice:
+                content_text = choice["message"].get("content", "")
 
         # Build output message
         output_message = {

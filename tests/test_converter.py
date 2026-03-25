@@ -72,6 +72,24 @@ class TestConverterRequestConversion:
         assert "tools" not in result
         assert "max_tokens" not in result
 
+    def test_convert_tools_parameter(self):
+        """Tools parameter should be passed through to the request."""
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather info",
+                    "parameters": {"type": "object"},
+                },
+            }
+        ]
+        req = ResponsesRequest(model="gpt-5", input="test", tools=tools)
+        result = self.converter.to_chat_completions_request(req, "default")
+
+        assert "tools" in result
+        assert result["tools"] == tools
+
 
 class TestConverterResponseConversion:
     def setup_method(self):
@@ -125,6 +143,22 @@ class TestConverterResponseConversion:
 
         # Should convert chatcmpl-xyz789 -> resp_xyz789
         assert "xyz789" in result["id"]
+
+    def test_convert_response_empty_choices(self):
+        """Handle empty choices array gracefully."""
+        chat_response = {
+            "id": "chatcmpl-empty",
+            "choices": [],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": 1},
+        }
+
+        result = self.converter.to_responses_response(chat_response)
+
+        assert result["id"].startswith("resp_")
+        assert result["status"] == "completed"
+        assert result["output_text"] == ""
+        assert len(result["output"]) == 1
+        assert result["output"][0]["content"][0]["text"] == ""
 
 
 class TestConverterStreamEvent:
