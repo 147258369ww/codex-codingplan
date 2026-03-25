@@ -1,0 +1,16 @@
+# codex-proxy/config.example.yaml
+# Copy this file to config.yaml and fill in your values
+
+server:
+  host: "127.0.0.1"
+  port: 8080
+
+coding_plan:
+  base_url: "https://coding.dashscope.aliyuncs.com/v1"
+  api_key: "${CODING_PLAN_API_KEY}"  # Set via environment variable
+  model: "qwen-coder-plus"
+  timeout: 300
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
