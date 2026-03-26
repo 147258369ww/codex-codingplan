@@ -20,8 +20,11 @@ python -m codex_proxy.main
 # Run all tests
 pytest tests/ -v
 
-# Run specific test file
+# Run a single test file
 pytest tests/test_converter.py -v
+
+# Run a specific test
+pytest tests/test_converter.py::TestConverterRequestConversion::test_convert_simple_string_input -v
 
 # Run with coverage
 pytest tests/ -v --cov=codex_proxy --cov-report=html
@@ -42,13 +45,13 @@ OpenAI Responses API request → /v1/responses endpoint
 
 | File | Responsibility |
 |------|----------------|
-| `main.py` | FastAPI app creation, lifespan management, logging middleware |
-| `router.py` | API endpoints (`/health`, `/v1/responses`), streaming response generator |
+| `main.py` | FastAPI app creation, lifespan management, logging setup with daily rotation |
+| `router.py` | API endpoints (`/health`, `/v1/responses`), streaming response with full event sequence |
 | `converter.py` | Bidirectional format conversion between Responses API and Chat Completions |
-| `client.py` | Async HTTP client for Coding Plan API, handles streaming SSE parsing |
+| `client.py` | Async HTTP client for Coding Plan API, SSE streaming parsing |
 | `models.py` | Pydantic models for Responses API request/response types |
-| `config.py` | YAML configuration loading with `${ENV_VAR}` substitution |
-| `config.yaml` | Runtime configuration (model mapping, API key, server settings) |
+| `config.py` | YAML configuration with `${ENV_VAR}` substitution, model mapping |
+| `tools.py` | Reserved for future tool/function calling implementation |
 
 ### Key Format Conversions
 
@@ -56,21 +59,31 @@ OpenAI Responses API request → /v1/responses endpoint
 - **Role Mapping**: `developer` role maps to `system`
 - **Model Resolution**: Request model names (e.g., `gpt-5.4`) are mapped via `model_mapping` in config
 - **Response ID**: `chatcmpl-xxx` becomes `resp_xxx`
-- **Streaming Events**: Chat Completions SSE → `response.output_text.delta`/`response.completed` events
+- **Reasoning Content**: `reasoning_content` from upstream (qwen3.5-plus) is merged into output text
+- **Streaming Events**: Full event sequence including `response.created`, `response.output_item.added`, `response.output_text.delta`, `response.output_item.done`, `response.completed`
 
 ## Configuration
 
-Copy `config.example.yaml` to `config.yaml`. The API key uses environment variable substitution:
+Copy `config.example.yaml` to `config.yaml`. Key settings:
 
 ```yaml
 coding_plan:
-  api_key: "${CODING_PLAN_API_KEY}"
+  api_key: "${CODING_PLAN_API_KEY}"  # Required, from env var
   model_mapping:
-    "gpt-5.4": "qwen3.5-plus"
+    "gpt-5.4": "qwen3.5-plus"        # Map Codex model names to upstream
 ```
 
-Set `CODING_PLAN_API_KEY` environment variable before running.
+Set `CODING_PLAN_API_KEY` environment variable before running. Empty API key raises `ConfigurationError`.
 
 ## Testing
 
-Tests use `pytest-asyncio` with `asyncio_mode = "auto"`. The `respx` library mocks HTTP requests to Coding Plan API. Test files mirror the module structure: `test_converter.py` tests `converter.py`, etc.
+Tests use `pytest-asyncio` with `asyncio_mode = "auto"`. The `respx` library mocks HTTP requests. Test files mirror module structure: `test_converter.py` tests `converter.py`.
+
+## Feature Status
+
+See `docs/feature-roadmap.md` for detailed implementation status. Key missing features:
+
+- **Tool calling**: `function_call` output and `function_call_output` input handling (P0)
+- **`tool_choice` / `parallel_tool_calls`**: Tool calling parameters (P1)
+- **Structured output**: `text.format` → `response_format` conversion (P2)
+- **Reasoning output**: `reasoning` type items in response output (P2)
