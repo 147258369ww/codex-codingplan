@@ -295,3 +295,55 @@ coding_plan:
     assert config.logging.console_level == "INFO"
     assert config.logging.file_level == "DEBUG"
     assert config.logging.payload_max_chars == 4000
+
+
+def test_logging_level_falls_back_to_console_and_file_levels(tmp_path):
+    """Test that logging.level populates console_level and file_level when omitted."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+server:
+  host: "0.0.0.0"
+  port: 9000
+
+coding_plan:
+  base_url: "https://api.example.com/v1"
+  api_key: "test-key"
+  model: "test-model"
+  timeout: 120
+
+logging:
+  level: "WARNING"
+""")
+
+    config = Config.load(str(config_file))
+
+    assert config.logging.level == "WARNING"
+    assert config.logging.console_level == "WARNING"
+    assert config.logging.file_level == "WARNING"
+
+
+def test_explicit_console_and_file_levels_override_logging_level(tmp_path):
+    """Test that explicit console/file levels win over logging.level."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("""
+server:
+  host: "0.0.0.0"
+  port: 9000
+
+coding_plan:
+  base_url: "https://api.example.com/v1"
+  api_key: "test-key"
+  model: "test-model"
+  timeout: 120
+
+logging:
+  level: "WARNING"
+  console_level: "ERROR"
+  file_level: "DEBUG"
+""")
+
+    config = Config.load(str(config_file))
+
+    assert config.logging.level == "WARNING"
+    assert config.logging.console_level == "ERROR"
+    assert config.logging.file_level == "DEBUG"

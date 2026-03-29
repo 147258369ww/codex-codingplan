@@ -140,10 +140,18 @@ class Config:
             )
 
         try:
+            if "logging" in raw_config and raw_config["logging"] is not None:
+                logging_config_data = dict(raw_config["logging"])
+                if "console_level" not in logging_config_data:
+                    logging_config_data["console_level"] = logging_config_data.get("level", LoggingConfig().level)
+                if "file_level" not in logging_config_data:
+                    logging_config_data["file_level"] = logging_config_data.get("level", LoggingConfig().level)
+            else:
+                logging_config_data = {}
             return cls(
                 server=ServerConfig(**raw_config["server"]),
                 coding_plan=CodingPlanConfig(**raw_config["coding_plan"]),
-                logging=LoggingConfig(**raw_config.get("logging", {})),
+                logging=LoggingConfig(**logging_config_data),
             )
         except TypeError as e:
             missing_fields = str(e).split("missing")[1] if "missing" in str(e) else str(e)
