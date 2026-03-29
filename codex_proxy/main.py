@@ -1,10 +1,9 @@
 """FastAPI application entry point."""
 
 import logging
-import os
-from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+from typing import TextIO
 
 import uvicorn
 from contextlib import asynccontextmanager
@@ -17,8 +16,48 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from codex_proxy.client import CodingPlanClient
 from codex_proxy.config import Config
 from codex_proxy.converter import Converter
+from codex_proxy.logging_utils import ConsoleFormatter, should_use_color
 
 logger = logging.getLogger(__name__)
+
+
+def configure_logging(
+    config: Config,
+    log_dir: Path | None = None,
+    console_stream: TextIO | None = None,
+) -> None:
+    """Configure separate file and console logging sinks."""
+    log_dir = log_dir or Path(__file__).parent.parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(logging.DEBUG)
+
+    file_level = getattr(logging, config.logging.file_level.upper())
+    file_handler = TimedRotatingFileHandler(
+        log_dir / "codex-proxy.log",
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(file_level)
+    file_handler.setFormatter(logging.Formatter(config.logging.format))
+    root_logger.addHandler(file_handler)
+
+    console_level = getattr(logging, config.logging.console_level.upper())
+    console_logger = logging.getLogger("codex_proxy.console")
+    console_logger.handlers.clear()
+    console_logger.setLevel(console_level)
+    console_logger.propagate = False
+
+    console_handler = logging.StreamHandler(console_stream)
+    console_handler.setLevel(console_level)
+    console_handler.setFormatter(
+        ConsoleFormatter(use_color=should_use_color(console_handler.stream))
+    )
+    console_logger.addHandler(console_handler)
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -82,42 +121,7 @@ def create_app(config: Config) -> FastAPI:
 def run():
     """Run the application."""
     config = Config.load("config.yaml")
-
-    # Create logs directory
-    log_dir = Path(__file__).parent.parent / "logs"
-    log_dir.mkdir(exist_ok=True)
-
-    # Configure logging with file handler
-    log_level = getattr(logging, config.logging.level.upper())
-
-    # Create formatters
-    formatter = logging.Formatter(config.logging.format)
-
-    # File handler - rotate daily, keep 7 days
-    log_file = log_dir / "codex-proxy.log"
-    file_handler = TimedRotatingFileHandler(
-        log_file,
-        when="midnight",
-        interval=1,
-        backupCount=7,
-        encoding="utf-8",
-    )
-    file_handler.setLevel(log_level)
-    file_handler.setFormatter(formatter)
-
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
-    console_handler.setFormatter(formatter)
-
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
-
-    logger.info("Logging initialized. Log file: %s", log_file)
-
+    configure_logging(config)
     app = create_app(config)
 
     uvicorn.run(
