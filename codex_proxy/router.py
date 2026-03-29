@@ -100,45 +100,45 @@ def register_routes(
         started_at = _get_started_at(http_request)
         payload_max_chars = config.logging.payload_max_chars
 
-        # Resolve model name (e.g., gpt-5.4 -> qwen3.5-plus)
-        actual_model = config.coding_plan.resolve_model(request.model)
-        input_summary = _summarize_input_count(request.input)
-        tool_count = len(request.tools or [])
+        try:
+            # Resolve model name (e.g., gpt-5.4 -> qwen3.5-plus)
+            actual_model = config.coding_plan.resolve_model(request.model)
+            input_summary = _summarize_input_count(request.input)
+            tool_count = len(request.tools or [])
 
-        if not request.stream:
-            console_logger.info(
-                "start POST /v1/responses model=%s->%s stream=%s input=%s tool_count=%s",
+            if not request.stream:
+                console_logger.info(
+                    "start POST /v1/responses model=%s->%s stream=%s input=%s tool_count=%s",
+                    request.model,
+                    actual_model,
+                    request.stream,
+                    input_summary,
+                    tool_count,
+                    extra={"request_id": request_id},
+                )
+            logger.info(
+                "request.started request_id=%s method=POST path=/v1/responses model=%s resolved_model=%s stream=%s input=%s tool_count=%s",
+                request_id,
                 request.model,
                 actual_model,
                 request.stream,
                 input_summary,
                 tool_count,
-                extra={"request_id": request_id},
             )
-        logger.info(
-            "request.started request_id=%s method=POST path=/v1/responses model=%s resolved_model=%s stream=%s input=%s tool_count=%s",
-            request_id,
-            request.model,
-            actual_model,
-            request.stream,
-            input_summary,
-            tool_count,
-        )
 
-        # Convert request
-        chat_request = converter.to_chat_completions_request(
-            request,
-            actual_model,
-        )
-        serialized_payload, payload_truncated = _serialize_payload(chat_request, payload_max_chars)
-        logger.info(
-            "request.payload request_id=%s truncated=%s payload=%s",
-            request_id,
-            payload_truncated,
-            serialized_payload,
-        )
+            # Convert request
+            chat_request = converter.to_chat_completions_request(
+                request,
+                actual_model,
+            )
+            serialized_payload, payload_truncated = _serialize_payload(chat_request, payload_max_chars)
+            logger.info(
+                "request.payload request_id=%s truncated=%s payload=%s",
+                request_id,
+                payload_truncated,
+                serialized_payload,
+            )
 
-        try:
             if request.stream:
                 return StreamingResponse(
                     _stream_response(

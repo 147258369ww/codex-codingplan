@@ -502,3 +502,38 @@ class TestRouter:
         assert f"{request_id}  upstream_error status=401 error_type=invalid_request_error message=Invalid API key" in console_output
         assert "upstream.request.error" in file_output
         assert request_id in file_output
+
+    def test_prelude_exception_logs_internal_error_summary(self, test_config, tmp_path, monkeypatch):
+        logged_client, console_stream, file_path = _create_logged_client(test_config, tmp_path)
+
+        def explode(*args, **kwargs):
+            raise RuntimeError("converter exploded")
+
+        monkeypatch.setattr(
+            "codex_proxy.converter.Converter.to_chat_completions_request",
+            explode,
+        )
+
+        response = TestClient(
+            logged_client.app,
+            raise_server_exceptions=False,
+        ).post(
+            "/v1/responses",
+            json={"model": "gpt-5", "input": "Hi"},
+        )
+
+        assert response.status_code == 500
+        assert response.json() == {
+            "detail": {
+                "type": "internal_error",
+                "message": "An unexpected error occurred: converter exploded",
+            }
+        }
+
+        console_output = console_stream.getvalue()
+        request_id = _extract_request_id(console_output)
+        file_output = file_path.read_text(encoding="utf-8")
+
+        assert f"{request_id}  internal_error status=500 message=converter exploded" in console_output
+        assert "request.internal_error" in file_output
+        assert request_id in file_output
