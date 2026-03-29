@@ -81,7 +81,32 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request.state.request_id = generate_request_id()
         request.state.started_at = time.perf_counter()
-        return await call_next(request)
+        request_id = request.state.request_id
+        logger.info(
+            "http.request.started request_id=%s method=%s path=%s",
+            request_id,
+            request.method,
+            request.url.path,
+        )
+        try:
+            response = await call_next(request)
+        except Exception:
+            logger.info(
+                "http.request.completed request_id=%s method=%s path=%s status=500",
+                request_id,
+                request.method,
+                request.url.path,
+            )
+            raise
+
+        logger.info(
+            "http.request.completed request_id=%s method=%s path=%s status=%s",
+            request_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+        )
+        return response
 
 
 def create_app(config: Config) -> FastAPI:

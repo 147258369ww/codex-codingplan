@@ -106,16 +106,15 @@ def register_routes(
             input_summary = _summarize_input_count(request.input)
             tool_count = len(request.tools or [])
 
-            if not request.stream:
-                console_logger.info(
-                    "start POST /v1/responses model=%s->%s stream=%s input=%s tool_count=%s",
-                    request.model,
-                    actual_model,
-                    request.stream,
-                    input_summary,
-                    tool_count,
-                    extra={"request_id": request_id},
-                )
+            console_logger.info(
+                "start POST /v1/responses model=%s->%s stream=%s input=%s tool_count=%s",
+                request.model,
+                actual_model,
+                request.stream,
+                input_summary,
+                tool_count,
+                extra={"request_id": request_id},
+            )
             logger.info(
                 "request.started request_id=%s method=POST path=/v1/responses model=%s resolved_model=%s stream=%s input=%s tool_count=%s",
                 request_id,

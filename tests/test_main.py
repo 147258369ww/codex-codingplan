@@ -327,3 +327,45 @@ def test_validation_errors_log_console_summary_and_file_details(tmp_path):
     assert "validation.errors" in file_output
     assert "validation.body" in file_output
     assert request_id in file_output
+
+
+def test_middleware_logs_generic_request_lifecycle_for_health_and_404(tmp_path):
+    config = Config(
+        server=ServerConfig(host="127.0.0.1", port=8080),
+        coding_plan=CodingPlanConfig(
+            base_url="https://api.test.com/v1",
+            api_key="test-key",
+            model="test-model",
+            timeout=30,
+        ),
+        logging=LoggingConfig(),
+    )
+
+    stream = io.StringIO()
+    configure_logging(config, log_dir=tmp_path, console_stream=stream)
+    client = TestClient(create_app(config))
+
+    health_response = client.get("/health")
+    missing_response = client.get("/missing")
+
+    assert health_response.status_code == 200
+    assert missing_response.status_code == 404
+
+    file_output = (tmp_path / "codex-proxy.log").read_text(encoding="utf-8")
+
+    assert re.search(
+        r"http\.request\.started request_id=req_[0-9a-f]{4} method=GET path=/health",
+        file_output,
+    )
+    assert re.search(
+        r"http\.request\.completed request_id=req_[0-9a-f]{4} method=GET path=/health status=200",
+        file_output,
+    )
+    assert re.search(
+        r"http\.request\.started request_id=req_[0-9a-f]{4} method=GET path=/missing",
+        file_output,
+    )
+    assert re.search(
+        r"http\.request\.completed request_id=req_[0-9a-f]{4} method=GET path=/missing status=404",
+        file_output,
+    )

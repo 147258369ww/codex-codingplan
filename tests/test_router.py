@@ -466,6 +466,7 @@ class TestRouter:
         console_output = console_stream.getvalue()
         request_id = _extract_request_id(console_output)
 
+        assert f"{request_id}  start POST /v1/responses model=gpt-5->gpt-5 stream=True input=1 item tool_count=0" in console_output
         assert f"{request_id}  tool_call name=get_weather call_id=call_123" in console_output
         assert "args_size=" in console_output
         assert f"{request_id}  done status=200" in console_output
