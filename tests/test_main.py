@@ -3,9 +3,11 @@
 
 import io
 import logging
+import re
 import sys
 
 import pytest
+from fastapi.testclient import TestClient
 from logging.handlers import TimedRotatingFileHandler
 
 from codex_proxy.config import Config, ServerConfig, CodingPlanConfig, LoggingConfig
@@ -292,3 +294,36 @@ async def test_lifespan_calls_client_close():
 
     # After exiting the context, close should have been called
     assert close_called, "client.close() was not called during lifespan shutdown"
+
+
+def test_validation_errors_log_console_summary_and_file_details(tmp_path):
+    config = Config(
+        server=ServerConfig(host="127.0.0.1", port=8080),
+        coding_plan=CodingPlanConfig(
+            base_url="https://api.test.com/v1",
+            api_key="test-key",
+            model="test-model",
+            timeout=30,
+        ),
+        logging=LoggingConfig(),
+    )
+
+    stream = io.StringIO()
+    configure_logging(config, log_dir=tmp_path, console_stream=stream)
+    client = TestClient(create_app(config))
+
+    response = client.post("/v1/responses", json={})
+
+    assert response.status_code == 422
+
+    console_output = stream.getvalue()
+    request_id_match = re.search(r"req_[0-9a-f]{4}", console_output)
+    assert request_id_match is not None
+    request_id = request_id_match.group(0)
+
+    file_output = (tmp_path / "codex-proxy.log").read_text(encoding="utf-8")
+
+    assert f"{request_id}  validation_failed status=422" in console_output
+    assert "validation.errors" in file_output
+    assert "validation.body" in file_output
+    assert request_id in file_output

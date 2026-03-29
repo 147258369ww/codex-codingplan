@@ -7,6 +7,7 @@ from typing import Any, AsyncGenerator
 import httpx
 
 from codex_proxy.config import CodingPlanConfig
+from codex_proxy.logging_utils import truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,8 @@ class CodingPlanClient:
         self,
         request: dict[str, Any],
         stream: bool = False,
+        request_id: str | None = None,
+        payload_max_chars: int = 4000,
     ) -> dict[str, Any] | AsyncGenerator[dict[str, Any], None]:
         """Send chat request to Coding Plan.
 
@@ -67,11 +70,27 @@ class CodingPlanClient:
             CodingPlanAPIError: If the API returns an error.
         """
         client = await self._get_client()
+        request_payload, was_truncated = truncate_text(
+            json.dumps(request, ensure_ascii=False, indent=2),
+            payload_max_chars,
+        )
+
+        logger.debug(
+            "upstream.request request_id=%s stream=%s truncated=%s payload=%s",
+            request_id,
+            stream,
+            was_truncated,
+            request_payload,
+        )
 
         if stream:
-            return self._request_stream(client, request)
-
-        logger.debug("Sending request to %s: %s", f"{self.base_url}/chat/completions", json.dumps(request, ensure_ascii=False, indent=2))
+            return self._request_stream(
+                client,
+                request,
+                request_id=request_id,
+                request_payload=request_payload,
+                payload_truncated=was_truncated,
+            )
 
         response = await client.post(
             f"{self.base_url}/chat/completions",
@@ -84,7 +103,14 @@ class CodingPlanClient:
 
         if response.status_code >= 400:
             error_data = response.json()
-            logger.error("API error response: %s", json.dumps(error_data, ensure_ascii=False, indent=2))
+            logger.error(
+                "upstream.request.error request_id=%s status=%s truncated=%s payload=%s error=%s",
+                request_id,
+                response.status_code,
+                was_truncated,
+                request_payload,
+                json.dumps(error_data, ensure_ascii=False, indent=2),
+            )
             raise CodingPlanAPIError(response.status_code, error_data)
 
         return response.json()
@@ -93,6 +119,9 @@ class CodingPlanClient:
         self,
         client: httpx.AsyncClient,
         request: dict[str, Any],
+        request_id: str | None,
+        request_payload: str,
+        payload_truncated: bool,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream chat response.
 
@@ -118,7 +147,14 @@ class CodingPlanClient:
                     parsed_error = json.loads(error_data)
                 except json.JSONDecodeError:
                     parsed_error = {"error": {"message": error_data.decode("utf-8", errors="replace")}}
-                logger.error("API error response (stream): %s", json.dumps(parsed_error, ensure_ascii=False, indent=2))
+                logger.error(
+                    "upstream.request.error request_id=%s status=%s stream=True truncated=%s payload=%s error=%s",
+                    request_id,
+                    response.status_code,
+                    payload_truncated,
+                    request_payload,
+                    json.dumps(parsed_error, ensure_ascii=False, indent=2),
+                )
                 raise CodingPlanAPIError(
                     response.status_code,
                     parsed_error,

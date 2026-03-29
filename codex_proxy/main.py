@@ -1,6 +1,8 @@
 """FastAPI application entry point."""
 
+import json
 import logging
+import time
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import TextIO
@@ -16,9 +18,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from codex_proxy.client import CodingPlanClient
 from codex_proxy.config import Config
 from codex_proxy.converter import Converter
-from codex_proxy.logging_utils import ConsoleFormatter, should_use_color
+from codex_proxy.logging_utils import ConsoleFormatter, generate_request_id, should_use_color
 
 logger = logging.getLogger(__name__)
+console_logger = logging.getLogger("codex_proxy.console")
 
 
 def _close_and_remove_handlers(logger_obj: logging.Logger) -> None:
@@ -76,10 +79,9 @@ def configure_logging(
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        logger.info(f">>> {request.method} {request.url.path}")
-        response = await call_next(request)
-        logger.info(f"<<< {request.method} {request.url.path} - {response.status_code}")
-        return response
+        request.state.request_id = generate_request_id()
+        request.state.started_at = time.perf_counter()
+        return await call_next(request)
 
 
 def create_app(config: Config) -> FastAPI:
@@ -114,12 +116,28 @@ def create_app(config: Config) -> FastAPI:
     # Add validation error handler for debugging
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        import json
-        logger.error("Validation error: %s", json.dumps(exc.errors(), ensure_ascii=False, indent=2))
-        logger.error("Request body: %s", await request.body())
+        request_id = getattr(request.state, "request_id", generate_request_id())
+        errors = exc.errors()
+        body = (await request.body()).decode("utf-8", errors="replace")
+
+        console_logger.error(
+            "validation_failed status=422 error_count=%s",
+            len(errors),
+            extra={"request_id": request_id},
+        )
+        logger.error(
+            "validation.errors request_id=%s errors=%s",
+            request_id,
+            json.dumps(errors, ensure_ascii=False, indent=2),
+        )
+        logger.error(
+            "validation.body request_id=%s body=%s",
+            request_id,
+            body,
+        )
         return JSONResponse(
             status_code=422,
-            content={"detail": exc.errors()},
+            content={"detail": errors},
         )
 
     # Add logging middleware
