@@ -126,16 +126,24 @@ async def _stream_response(
     full_content = ""
     usage = {}
     sequence_number = 0
+    next_output_index = 0
     content_index = 0
     created_sent = False
     text_item_added = False
     text_item_done = False
+    text_output_index: int | None = None
     tool_call_states: dict[int, ToolCallState] = {}
 
     def next_seq():
         nonlocal sequence_number
         sequence_number += 1
         return sequence_number
+
+    def allocate_output_index() -> int:
+        nonlocal next_output_index
+        output_index = next_output_index
+        next_output_index += 1
+        return output_index
 
     def sse_event(payload: dict[str, Any]) -> str:
         payload["sequence_number"] = next_seq()
@@ -158,14 +166,15 @@ async def _stream_response(
         })]
 
     def emit_text_item_added() -> list[str]:
-        nonlocal text_item_added
+        nonlocal text_item_added, text_output_index
         if text_item_added:
             return []
         text_item_added = True
+        text_output_index = allocate_output_index()
         return emit_response_created() + [
             sse_event({
                 "type": "response.output_item.added",
-                "output_index": 0,
+                "output_index": text_output_index,
                 "item": {
                     "id": item_id,
                     "type": "message",
@@ -176,7 +185,7 @@ async def _stream_response(
             sse_event({
                 "type": "response.content_part.added",
                 "item_id": item_id,
-                "output_index": 0,
+                "output_index": text_output_index,
                 "content_index": content_index,
                 "part": {"type": "output_text", "text": ""},
             }),
@@ -186,10 +195,11 @@ async def _stream_response(
         if state.added_sent:
             return []
         state.added_sent = True
+        state.output_index = allocate_output_index()
         return emit_response_created() + [
             sse_event({
                 "type": "response.output_item.added",
-                "output_index": state.index,
+                "output_index": state.output_index,
                 "item": build_function_call_item(state),
             })
         ]
@@ -209,14 +219,14 @@ async def _stream_response(
             sse_event({
                 "type": "response.output_text.done",
                 "item_id": item_id,
-                "output_index": 0,
+                "output_index": text_output_index,
                 "content_index": content_index,
                 "text": full_content,
             }),
             sse_event({
                 "type": "response.content_part.done",
                 "item_id": item_id,
-                "output_index": 0,
+                "output_index": text_output_index,
                 "content_index": content_index,
                 "part": {
                     "type": "output_text",
@@ -225,7 +235,7 @@ async def _stream_response(
             }),
             sse_event({
                 "type": "response.output_item.done",
-                "output_index": 0,
+                "output_index": text_output_index,
                 "item": output_item,
             }),
         ]
@@ -238,12 +248,12 @@ async def _stream_response(
             sse_event({
                 "type": "response.function_call_arguments.done",
                 "item_id": state.item_id,
-                "output_index": state.index,
+                "output_index": state.output_index,
                 "arguments": state.arguments,
             }),
             sse_event({
                 "type": "response.output_item.done",
-                "output_index": state.index,
+                "output_index": state.output_index,
                 "item": build_function_call_item(state),
             }),
         ]
@@ -255,19 +265,19 @@ async def _stream_response(
         return events
 
     def build_completed_output_items() -> list[dict[str, Any]]:
-        output_items: list[dict[str, Any]] = []
+        ordered_items: list[tuple[int, dict[str, Any]]] = []
         if text_item_added:
-            output_items.append({
+            ordered_items.append((text_output_index, {
                 "id": item_id,
                 "type": "message",
                 "role": "assistant",
                 "content": [{"type": "output_text", "text": full_content}],
-            })
-        for index in sorted(tool_call_states):
-            state = tool_call_states[index]
+            }))
+        for state in tool_call_states.values():
             if state.added_sent:
-                output_items.append(build_function_call_item(state))
-        return output_items
+                ordered_items.append((state.output_index, build_function_call_item(state)))
+        ordered_items.sort(key=lambda item: item[0])
+        return [item for _, item in ordered_items]
 
     try:
         stream = await client.chat(chat_request, stream=True)
@@ -322,7 +332,7 @@ async def _stream_response(
                 if tool_event and tool_event.get("delta"):
                     state.arguments += tool_event["delta"]
                     tool_event["item_id"] = state.item_id
-                    tool_event["output_index"] = state.index
+                    tool_event["output_index"] = state.output_index
                     yield sse_event(tool_event)
 
             text_delta = {
@@ -341,6 +351,7 @@ async def _stream_response(
                         yield payload
                     responses_event["item_id"] = item_id
                     responses_event["content_index"] = content_index
+                    responses_event["output_index"] = text_output_index
                     full_content += responses_event["delta"]
                     yield sse_event(responses_event)
                 else:

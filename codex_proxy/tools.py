@@ -10,6 +10,7 @@ class ToolCallState:
 
     index: int
     item_id: str
+    output_index: int | None
     call_id: str
     name: str
     arguments: str = ""
@@ -30,6 +31,7 @@ def get_or_create_tool_call_state(
         state = ToolCallState(
             index=index,
             item_id="fc_" + str(uuid.uuid4())[:8],
+            output_index=None,
             call_id=tool_call.get("id") or "call_" + str(uuid.uuid4())[:8],
             name=function.get("name", ""),
         )

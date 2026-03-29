@@ -157,6 +157,68 @@ class TestRouter:
         assert "response.output_item.done" in content
 
     @respx.mock
+    def test_streaming_mixed_text_and_tool_items_preserve_output_order(self, client):
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(
+                200,
+                content=(
+                    b'data: {"id":"chatcmpl-test","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"get_weather","arguments":"{\\"city\\":"}}]}}]}\n\n'
+                    b'data: {"choices":[{"delta":{"content":"Let me check."}}]}\n\n'
+                    b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"Hangzhou\\"}"}}]}}]}\n\n'
+                    b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+                    b'data: [DONE]\n\n'
+                ),
+                headers={"content-type": "text/event-stream"},
+            )
+        )
+
+        response = client.post(
+            "/v1/responses",
+            json={"model": "gpt-5", "input": "Weather?", "stream": True},
+        )
+
+        assert response.status_code == 200
+        events = []
+        for line in response.content.decode().splitlines():
+            if not line.startswith("data: "):
+                continue
+            payload = line[6:]
+            if payload == "[DONE]":
+                continue
+            events.append(json.loads(payload))
+
+        added_events = [
+            event for event in events
+            if event["type"] == "response.output_item.added"
+        ]
+        assert [event["item"]["type"] for event in added_events] == [
+            "function_call",
+            "message",
+        ]
+        assert [event["output_index"] for event in added_events] == [0, 1]
+
+        tool_delta = next(
+            event for event in events
+            if event["type"] == "response.function_call_arguments.delta"
+        )
+        text_delta = next(
+            event for event in events
+            if event["type"] == "response.output_text.delta"
+        )
+        assert tool_delta["output_index"] == 0
+        assert text_delta["output_index"] == 1
+
+        completed = next(
+            event for event in events
+            if event["type"] == "response.completed"
+        )
+        assert [
+            item["type"] for item in completed["response"]["output"]
+        ] == ["function_call", "message"]
+        assert completed["response"]["output"][0]["call_id"] == "call_123"
+        assert completed["response"]["output"][1]["content"][0]["text"] == "Let me check."
+
+    @respx.mock
     def test_api_error_unauthorized(self, client):
         """Test API error (401 Unauthorized) is properly returned."""
         respx.post("https://api.test.com/v1/chat/completions").mock(
