@@ -292,3 +292,6 @@ coding_plan:
 
     assert config.logging.level == "INFO"
     assert "%(asctime)s" in config.logging.format
+    assert config.logging.console_level == "INFO"
+    assert config.logging.file_level == "DEBUG"
+    assert config.logging.payload_max_chars == 4000

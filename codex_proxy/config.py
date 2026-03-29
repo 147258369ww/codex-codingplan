@@ -72,6 +72,9 @@ class LoggingConfig:
     """Logging configuration."""
     level: str = "INFO"
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    console_level: str = "INFO"
+    file_level: str = "DEBUG"
+    payload_max_chars: int = 4000
 
 
 @dataclass

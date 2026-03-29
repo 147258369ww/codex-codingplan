@@ -19,4 +19,7 @@ coding_plan:
 
 logging:
   level: "INFO"
+  console_level: "INFO"
+  file_level: "DEBUG"
+  payload_max_chars: 4000
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
