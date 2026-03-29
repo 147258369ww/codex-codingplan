@@ -303,7 +303,7 @@ class ConsoleFormatter(logging.Formatter):
         if self.use_color and record.levelname in self.LEVEL_COLORS:
             level = f"{self.LEVEL_COLORS[record.levelname]}{level}{self.RESET}"
         request_id = getattr(record, "request_id", "-")
-        return f"{timestamp}  {level}  {request_id:<8}  {record.getMessage()}"
+        return f"{timestamp}  {level}  {request_id:<16}  {record.getMessage()}"
 ```
 
 ```python

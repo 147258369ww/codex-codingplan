@@ -11,7 +11,7 @@ from typing import Any
 
 def generate_request_id() -> str:
     """Generate a short request identifier."""
-    return f"req_{secrets.token_hex(2)}"
+    return f"req_{secrets.token_hex(6)}"
 
 
 def truncate_text(value: str, limit: int) -> tuple[str, bool]:
@@ -69,7 +69,7 @@ class ConsoleFormatter(logging.Formatter):
             if color is not None:
                 level = f"{color}{level}{self.RESET}"
         request_id = getattr(record, "request_id", "-")
-        message = f"{timestamp}  {level}  {request_id:<8}  {record.getMessage()}"
+        message = f"{timestamp}  {level}  {request_id:<16}  {record.getMessage()}"
         if record.exc_info:
             message += "\n" + self.formatException(record.exc_info)
         if record.stack_info:

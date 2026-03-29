@@ -15,7 +15,7 @@ from codex_proxy.logging_utils import (
 def test_generate_request_id_has_expected_shape():
     request_id = generate_request_id()
 
-    assert re.fullmatch(r"req_[0-9a-f]{4}", request_id)
+    assert re.fullmatch(r"req_[0-9a-f]{12}", request_id)
 
 
 def test_truncate_text_marks_truncated_values():

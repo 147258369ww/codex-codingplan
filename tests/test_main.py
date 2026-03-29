@@ -5,6 +5,7 @@ import io
 import logging
 import re
 import sys
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,7 +13,7 @@ from logging.handlers import TimedRotatingFileHandler
 
 from codex_proxy.config import Config, ServerConfig, CodingPlanConfig, LoggingConfig
 from codex_proxy.logging_utils import ConsoleFormatter
-from codex_proxy.main import configure_logging, create_app
+from codex_proxy.main import configure_logging, create_app, run
 
 
 @pytest.fixture(autouse=True)
@@ -317,7 +318,7 @@ def test_validation_errors_log_console_summary_and_file_details(tmp_path):
     assert response.status_code == 422
 
     console_output = stream.getvalue()
-    request_id_match = re.search(r"req_[0-9a-f]{4}", console_output)
+    request_id_match = re.search(r"req_[0-9a-f]{12}", console_output)
     assert request_id_match is not None
     request_id = request_id_match.group(0)
 
@@ -354,18 +355,49 @@ def test_middleware_logs_generic_request_lifecycle_for_health_and_404(tmp_path):
     file_output = (tmp_path / "codex-proxy.log").read_text(encoding="utf-8")
 
     assert re.search(
-        r"http\.request\.started request_id=req_[0-9a-f]{4} method=GET path=/health",
+        r"http\.request\.started request_id=req_[0-9a-f]{12} method=GET path=/health",
         file_output,
     )
     assert re.search(
-        r"http\.request\.completed request_id=req_[0-9a-f]{4} method=GET path=/health status=200",
+        r"http\.request\.completed request_id=req_[0-9a-f]{12} method=GET path=/health status=200",
         file_output,
     )
     assert re.search(
-        r"http\.request\.started request_id=req_[0-9a-f]{4} method=GET path=/missing",
+        r"http\.request\.started request_id=req_[0-9a-f]{12} method=GET path=/missing",
         file_output,
     )
     assert re.search(
-        r"http\.request\.completed request_id=req_[0-9a-f]{4} method=GET path=/missing status=404",
+        r"http\.request\.completed request_id=req_[0-9a-f]{12} method=GET path=/missing status=404",
         file_output,
     )
+
+
+def test_run_disables_uvicorn_console_and_access_logging(monkeypatch):
+    config = Config(
+        server=ServerConfig(host="127.0.0.1", port=8080),
+        coding_plan=CodingPlanConfig(
+            base_url="https://api.test.com/v1",
+            api_key="test-key",
+            model="test-model",
+            timeout=30,
+        ),
+        logging=LoggingConfig(),
+    )
+
+    load_mock = Mock(return_value=config)
+    configure_mock = Mock()
+    uvicorn_mock = Mock()
+
+    monkeypatch.setattr("codex_proxy.main.Config.load", load_mock)
+    monkeypatch.setattr("codex_proxy.main.configure_logging", configure_mock)
+    monkeypatch.setattr("codex_proxy.main.uvicorn.run", uvicorn_mock)
+
+    run()
+
+    configure_mock.assert_called_once_with(config)
+    uvicorn_mock.assert_called_once()
+    _, kwargs = uvicorn_mock.call_args
+    assert kwargs["host"] == config.server.host
+    assert kwargs["port"] == config.server.port
+    assert kwargs["log_config"] is None
+    assert kwargs["access_log"] is False

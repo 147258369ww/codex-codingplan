@@ -56,25 +56,25 @@ Console output should be a single-line summary format with optional light color 
 Example request start:
 
 ```text
-15:08:41  INFO   req_a13f  POST /v1/responses  model=gpt-5.4 -> qwen3.5-plus  stream=true  input=6msg  tools=2
+15:08:41  INFO   req_a13f9c2b8d4e  POST /v1/responses  model=gpt-5.4 -> qwen3.5-plus  stream=true  input=6msg  tools=2
 ```
 
 Example tool call summary:
 
 ```text
-15:08:42  INFO   req_a13f  tool_call  name=search_docs  call_id=call_x9  args=214B
+15:08:42  INFO   req_a13f9c2b8d4e  tool_call  name=search_docs  call_id=call_x9  args=214B
 ```
 
 Example request completion:
 
 ```text
-15:08:44  INFO   req_a13f  done  status=200  latency=2.31s  text=684B  tools=1  finish=stop
+15:08:44  INFO   req_a13f9c2b8d4e  done  status=200  latency=2.31s  text=684B  tools=1  finish=stop
 ```
 
 Example upstream error:
 
 ```text
-15:09:12  WARN   req_b721  upstream_error  status=429  type=rate_limit_error  message="Too many requests"
+15:09:12  WARN   req_b721f0c4d8ae  upstream_error  status=429  type=rate_limit_error  message="Too many requests"
 ```
 
 ### File Log Style
@@ -84,11 +84,11 @@ File logs should keep the existing rotating log file and use a more detailed for
 Example detailed events:
 
 ```text
-2026-03-29 15:08:41,224 INFO  codex_proxy.request request.started request_id=req_a13f method=POST path=/v1/responses client=127.0.0.1
-2026-03-29 15:08:41,225 INFO  codex_proxy.request request.resolved request_id=req_a13f model_requested=gpt-5.4 model_resolved=qwen3.5-plus stream=true
-2026-03-29 15:08:41,226 DEBUG codex_proxy.request request.payload request_id=req_a13f payload={...}
-2026-03-29 15:08:42,118 DEBUG codex_proxy.stream tool.delta request_id=req_a13f index=0 call_id=call_x9 name=search_docs delta_bytes=73
-2026-03-29 15:08:44,009 INFO  codex_proxy.request request.completed request_id=req_a13f status=200 latency_ms=2310 output_text_chars=684 tool_calls=1
+2026-03-29 15:08:41,224 INFO  codex_proxy.request request.started request_id=req_a13f9c2b8d4e method=POST path=/v1/responses client=127.0.0.1
+2026-03-29 15:08:41,225 INFO  codex_proxy.request request.resolved request_id=req_a13f9c2b8d4e model_requested=gpt-5.4 model_resolved=qwen3.5-plus stream=true
+2026-03-29 15:08:41,226 DEBUG codex_proxy.request request.payload request_id=req_a13f9c2b8d4e payload={...}
+2026-03-29 15:08:42,118 DEBUG codex_proxy.stream tool.delta request_id=req_a13f9c2b8d4e index=0 call_id=call_x9 name=search_docs delta_bytes=73
+2026-03-29 15:08:44,009 INFO  codex_proxy.request request.completed request_id=req_a13f9c2b8d4e status=200 latency_ms=2310 output_text_chars=684 tool_calls=1
 ```
 
 ## Architecture
@@ -110,7 +110,7 @@ Both handlers remain attached to the root logger so existing module loggers cont
 
 ### Request Context
 
-Each incoming request should receive a short generated `request_id`, for example `req_a13f`.
+Each incoming request should receive a short generated `request_id`, for example `req_a13f9c2b8d4e`.
 
 This identifier should be attached to:
 

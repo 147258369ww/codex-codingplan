@@ -185,6 +185,8 @@ def run():
         app,
         host=config.server.host,
         port=config.server.port,
+        access_log=False,
+        log_config=None,
     )
 
 

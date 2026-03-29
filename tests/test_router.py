@@ -84,7 +84,7 @@ def _create_logged_client(test_config, tmp_path):
 
 
 def _extract_request_id(output: str) -> str:
-    match = re.search(r"req_[0-9a-f]{4}", output)
+    match = re.search(r"req_[0-9a-f]{12}", output)
     assert match is not None
     return match.group(0)
 
