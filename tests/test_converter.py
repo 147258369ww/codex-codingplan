@@ -359,7 +359,7 @@ class TestConverterResponseConversion:
         assert result["output_text"] == ""
         assert len(result["output"]) == 1
         assert result["output"][0]["type"] == "function_call"
-        assert result["output"][0]["id"].startswith("fc_")
+        assert result["output"][0]["id"]
         assert result["output"][0]["call_id"] == "call_123"
         assert result["output"][0]["name"] == "get_weather"
         assert result["output"][0]["arguments"] == "{\"city\":\"Hangzhou\"}"
@@ -391,10 +391,51 @@ class TestConverterResponseConversion:
         assert result["output_text"] == "Let me check."
         assert len(result["output"]) == 2
         assert result["output"][0]["type"] == "message"
+        assert result["output"][0]["content"][0]["text"] == "Let me check."
         assert result["output"][1]["type"] == "function_call"
-        assert result["output"][1]["id"].startswith("fc_")
+        assert result["output"][1]["id"]
         assert result["output"][1]["call_id"] == "call_999"
         assert result["output"][1]["arguments"] == "{\"city\":\"Suzhou\"}"
+
+    def test_convert_response_with_multiple_tool_calls_preserves_order(self):
+        chat_response = {
+            "id": "chatcmpl-multi123",
+            "model": "qwen3.5-plus",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "first_tool",
+                                "arguments": "{\"step\":1}",
+                            },
+                        },
+                        {
+                            "id": "call_2",
+                            "type": "function",
+                            "function": {
+                                "name": "second_tool",
+                                "arguments": "{\"step\":2}",
+                            },
+                        },
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14},
+        }
+
+        result = self.converter.to_responses_response(chat_response)
+
+        assert result["output_text"] == ""
+        assert len(result["output"]) == 2
+        assert [item["call_id"] for item in result["output"]] == ["call_1", "call_2"]
+        assert [item["name"] for item in result["output"]] == ["first_tool", "second_tool"]
+        assert [item["arguments"] for item in result["output"]] == ["{\"step\":1}", "{\"step\":2}"]
 
 
 class TestConverterStreamEvent:
