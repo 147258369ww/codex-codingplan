@@ -491,7 +491,7 @@ async def _stream_response(
                     yield sse_event(tool_event)
                 if first_observation:
                     console_logger.info(
-                        "tool_call name=%s call_id=%s args_size=%s",
+                        "tool_call name=%s call_id=%s args_size_so_far=%s",
                         state.name or "unknown",
                         state.call_id,
                         format_bytes(len(state.arguments.encode("utf-8"))),
