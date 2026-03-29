@@ -129,6 +129,36 @@ class TestResponsesResponse:
         assert response.output_text == "Hello!"
         assert response.usage.total_tokens == 15
 
+    def test_response_accepts_function_call_output_items(self):
+        response = ResponsesResponse(
+            id="resp_123",
+            created_at=1741369938.0,
+            status="completed",
+            model="gpt-5",
+            output=[
+                {
+                    "id": "msg_123",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Let me check."}],
+                },
+                {
+                    "id": "fc_123",
+                    "type": "function_call",
+                    "call_id": "call_123",
+                    "name": "get_weather",
+                    "arguments": "{\"city\":\"Hangzhou\"}",
+                },
+            ],
+            output_text="Let me check.",
+            usage=Usage(input_tokens=10, output_tokens=4, total_tokens=14),
+        )
+
+        assert len(response.output) == 2
+        assert response.output[0].type == "message"
+        assert response.output[1].type == "function_call"
+        assert response.output[1].call_id == "call_123"
+
 
 class TestStreamDeltaEvent:
     def test_delta_event_creation(self):

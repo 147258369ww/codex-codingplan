@@ -110,6 +110,9 @@ class OutputMessage(BaseModel):
     content: list[OutputContent]
 
 
+OutputItem = Union[OutputMessage, FunctionCallItem]
+
+
 class Usage(BaseModel):
     """Token usage statistics."""
 
@@ -126,7 +129,7 @@ class ResponsesResponse(BaseModel):
     created_at: float
     status: Literal["completed", "failed", "cancelled"]
     model: str
-    output: list[OutputMessage]
+    output: list[OutputItem]
     output_text: str
     usage: Usage
 
