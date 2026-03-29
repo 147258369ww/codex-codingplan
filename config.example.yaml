@@ -18,8 +18,12 @@ coding_plan:
     "o4-mini": "qwen3.5-plus"
 
 logging:
+  # Legacy shared log level fallback for code paths that still use a single level.
   level: "INFO"
+  # Console summary level for the upcoming split logging path.
   console_level: "INFO"
+  # File diagnostic level for the upcoming split logging path.
   file_level: "DEBUG"
+  # Maximum payload text kept before truncation markers are added.
   payload_max_chars: 4000
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -16,7 +16,11 @@ def truncate_text(value: str, limit: int) -> tuple[str, bool]:
     """Truncate text to a maximum length and mark whether it was shortened."""
     if len(value) <= limit:
         return value, False
-    return value[:limit] + "...<truncated>", True
+
+    marker = "...<truncated>"
+    if limit <= len(marker):
+        return marker[:limit], True
+    return value[: limit - len(marker)] + marker, True
 
 
 def format_bytes(size: int) -> str:

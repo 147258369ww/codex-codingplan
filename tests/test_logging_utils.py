@@ -19,10 +19,11 @@ def test_generate_request_id_has_expected_shape():
 
 
 def test_truncate_text_marks_truncated_values():
-    truncated, was_truncated = truncate_text("x" * 25, limit=10)
+    truncated, was_truncated = truncate_text("x" * 25, limit=20)
 
     assert was_truncated is True
-    assert truncated == "xxxxxxxxxx...<truncated>"
+    assert truncated == "xxxxxx...<truncated>"
+    assert len(truncated) == 20
 
 
 def test_truncate_text_leaves_short_values_unchanged():

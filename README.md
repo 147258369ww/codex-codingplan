@@ -51,9 +51,9 @@ export CODING_PLAN_API_KEY="your-api-key-here"
 | `coding_plan` | `api_key` | API key (supports `${ENV_VAR}` syntax) | Required |
 | `coding_plan` | `model` | Model name to use | `qwen-coder-plus` |
 | `coding_plan` | `timeout` | Request timeout in seconds | `300` |
-| `logging` | `level` | Log level | `INFO` |
-| `logging` | `console_level` | Console log level | `INFO` |
-| `logging` | `file_level` | File log level | `DEBUG` |
+| `logging` | `level` | Legacy default log level fallback | `INFO` |
+| `logging` | `console_level` | Console summary log level | `INFO` |
+| `logging` | `file_level` | File diagnostic log level | `DEBUG` |
 | `logging` | `payload_max_chars` | Maximum payload chars before truncation | `4000` |
 | `logging` | `format` | Log format string | Standard format |
 
