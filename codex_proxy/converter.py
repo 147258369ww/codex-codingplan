@@ -78,7 +78,7 @@ class Converter:
         self,
         input_value: str | list,
         instructions: str | None,
-    ) -> list[dict[str, str]]:
+    ) -> list[dict[str, Any]]:
         """Convert input field to messages array.
 
         Args:

@@ -1,5 +1,7 @@
 """Tests for converter module."""
 
+from typing import Any, get_type_hints
+
 import pytest
 from codex_proxy.converter import Converter
 from codex_proxy.models import ResponsesRequest, Message
@@ -167,6 +169,40 @@ class TestConverterRequestConversion:
         assert result["messages"][1]["role"] == "assistant"
         assert result["messages"][1]["tool_calls"][0]["id"] == "call_456"
         assert result["messages"][1]["tool_calls"][0]["function"]["name"] == "get_weather"
+        assert result["messages"][1]["tool_calls"][0]["function"]["arguments"] == '{"city": "Shanghai"}'
+
+    def test_convert_mixed_history_preserves_message_tool_call_and_output_order(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input=[
+                {"type": "message", "role": "user", "content": "Weather?"},
+                {
+                    "type": "function_call",
+                    "call_id": "call_456",
+                    "name": "get_weather",
+                    "arguments": '{"city": "Shanghai"}',
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_456",
+                    "output": {"temperature": 26},
+                },
+            ],
+        )
+
+        result = self.converter.to_chat_completions_request(req, "default-model")
+
+        assert [message["role"] for message in result["messages"]] == [
+            "user",
+            "assistant",
+            "tool",
+        ]
+        assert result["messages"][1]["tool_calls"][0]["id"] == "call_456"
+        assert result["messages"][2] == {
+            "role": "tool",
+            "tool_call_id": "call_456",
+            "content": '{"temperature": 26}',
+        }
 
     def test_convert_simplified_function_tools(self):
         req = ResponsesRequest(
@@ -227,6 +263,11 @@ class TestConverterRequestConversion:
         assert "tools" not in result
         assert "tool_choice" not in result
         assert "parallel_tool_calls" not in result
+
+    def test_convert_input_return_annotation_supports_richer_message_shapes(self):
+        hints = get_type_hints(Converter._convert_input)
+
+        assert hints["return"] == list[dict[str, Any]]
 
 
 class TestConverterResponseConversion:
