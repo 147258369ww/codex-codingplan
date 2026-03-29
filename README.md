@@ -111,13 +111,18 @@ The proxy converts OpenAI Responses API requests to Chat Completions format:
 
 - `input` messages are converted to `messages` array
 - `instructions` becomes the system message
-- `tools` are converted to `functions` format
+- `function_call` input history becomes assistant `tool_calls`
+- `function_call_output` inputs become Chat `tool` messages
+- `tools` are converted to Chat `tools` definitions
+- `tool_choice` and `parallel_tool_calls` are forwarded when present
 - `stream` flag is preserved
 
 ### Response Conversion
 
-- Non-streaming: Full response is converted from Chat Completions to Responses format
-- Streaming: SSE events are converted on-the-fly with proper `response.output_item.added/done` events
+- Non-streaming: assistant `tool_calls` are converted back into Responses `function_call` items
+- Non-streaming: mixed text and tool-call responses preserve both message text and tool items
+- Streaming: text deltas and tool-call argument deltas are emitted as Responses SSE events
+- Streaming: tool-call completion emits `response.function_call_arguments.done` and `response.output_item.done`
 
 ## Error Handling
 

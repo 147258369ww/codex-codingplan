@@ -51,7 +51,7 @@ OpenAI Responses API request → /v1/responses endpoint
 | `client.py` | Async HTTP client for Coding Plan API, SSE streaming parsing |
 | `models.py` | Pydantic models for Responses API request/response types |
 | `config.py` | YAML configuration with `${ENV_VAR}` substitution, model mapping |
-| `tools.py` | Reserved for future tool/function calling implementation |
+| `tools.py` | Tool-calling streaming state helpers and Responses function-call item builders |
 
 ### Key Format Conversions
 
@@ -60,7 +60,9 @@ OpenAI Responses API request → /v1/responses endpoint
 - **Model Resolution**: Request model names (e.g., `gpt-5.4`) are mapped via `model_mapping` in config
 - **Response ID**: `chatcmpl-xxx` becomes `resp_xxx`
 - **Reasoning Content**: `reasoning_content` from upstream (qwen3.5-plus) is merged into output text
-- **Streaming Events**: Full event sequence including `response.created`, `response.output_item.added`, `response.output_text.delta`, `response.output_item.done`, `response.completed`
+- **Tool Calls**: `function_call` / `function_call_output` items are converted to and from Chat tool-call messages
+- **Tool Parameters**: `tool_choice` and `parallel_tool_calls` are forwarded when present
+- **Streaming Events**: Full event sequence including text deltas and tool-call argument events such as `response.function_call_arguments.delta` / `done`
 
 ## Configuration
 
@@ -81,9 +83,9 @@ Tests use `pytest-asyncio` with `asyncio_mode = "auto"`. The `respx` library moc
 
 ## Feature Status
 
-See `docs/feature-roadmap.md` for detailed implementation status. Key missing features:
+Current status:
 
-- **Tool calling**: `function_call` output and `function_call_output` input handling (P0)
-- **`tool_choice` / `parallel_tool_calls`**: Tool calling parameters (P1)
+- **Tool calling**: implemented for `function_call` output and `function_call_output` input handling
+- **`tool_choice` / `parallel_tool_calls`**: implemented
 - **Structured output**: `text.format` → `response_format` conversion (P2)
 - **Reasoning output**: `reasoning` type items in response output (P2)
