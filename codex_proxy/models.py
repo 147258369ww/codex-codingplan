@@ -44,6 +44,23 @@ class InputMessage(BaseModel):
     content: Union[str, list[InputContent]]
 
 
+class FunctionCallItem(BaseModel):
+    """Function call item in Responses API format."""
+
+    type: Literal["function_call"] = "function_call"
+    call_id: str
+    name: str
+    arguments: str
+
+
+class FunctionCallOutputItem(BaseModel):
+    """Function call output item in Responses API format."""
+
+    type: Literal["function_call_output"] = "function_call_output"
+    call_id: str
+    output: str
+
+
 # Legacy Message for backwards compatibility
 class Message(BaseModel):
     """Chat message (legacy format)."""
@@ -52,13 +69,18 @@ class Message(BaseModel):
     content: Union[str, list[InputContent]]
 
 
+RequestInputItem = Union[InputMessage, Message, FunctionCallItem, FunctionCallOutputItem]
+
+
 class ResponsesRequest(BaseModel):
     """Responses API request model."""
 
     model: str
-    input: Union[str, list[InputMessage], list[Message]]
+    input: Union[str, list[RequestInputItem]]
     instructions: str | None = None
     tools: list[dict[str, Any]] | None = None
+    tool_choice: str | dict[str, Any] | None = None
+    parallel_tool_calls: bool | None = None
     stream: bool = False
     max_output_tokens: int | None = Field(default=None, validation_alias="maxOutputTokens", serialization_alias="maxOutputTokens")
     temperature: float | None = None

@@ -48,6 +48,34 @@ class TestResponsesRequest:
         assert req.temperature is None
         assert req.top_p is None
 
+    def test_request_accepts_function_call_output_items(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input=[
+                {"type": "message", "role": "user", "content": "Check weather"},
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_123",
+                    "output": '{"temperature": 26}',
+                },
+            ],
+        )
+
+        assert len(req.input) == 2
+        assert req.input[1].type == "function_call_output"
+        assert req.input[1].call_id == "call_123"
+
+    def test_request_accepts_tool_choice_and_parallel_tool_calls(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input="Hello",
+            tool_choice="auto",
+            parallel_tool_calls=True,
+        )
+
+        assert req.tool_choice == "auto"
+        assert req.parallel_tool_calls is True
+
 
 class TestResponsesResponse:
     def test_response_creation(self):
