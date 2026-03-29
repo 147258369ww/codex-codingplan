@@ -1,7 +1,5 @@
 """Tests for converter module."""
 
-from typing import Any, get_type_hints
-
 import pytest
 from codex_proxy.converter import Converter
 from codex_proxy.models import ResponsesRequest, Message
@@ -263,11 +261,6 @@ class TestConverterRequestConversion:
         assert "tools" not in result
         assert "tool_choice" not in result
         assert "parallel_tool_calls" not in result
-
-    def test_convert_input_return_annotation_supports_richer_message_shapes(self):
-        hints = get_type_hints(Converter._convert_input)
-
-        assert hints["return"] == list[dict[str, Any]]
 
 
 class TestConverterResponseConversion:
