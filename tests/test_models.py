@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from codex_proxy.models import (
     FunctionCallItem,
     Message,
+    ResponseFunctionCallItem,
     ResponsesRequest,
     ResponsesResponse,
     OutputContent,
@@ -157,7 +158,10 @@ class TestResponsesResponse:
         assert len(response.output) == 2
         assert response.output[0].type == "message"
         assert response.output[1].type == "function_call"
+        assert isinstance(response.output[1], ResponseFunctionCallItem)
+        assert response.output[1].id == "fc_123"
         assert response.output[1].call_id == "call_123"
+        assert response.output[1].arguments == "{\"city\":\"Hangzhou\"}"
 
 
 class TestStreamDeltaEvent:

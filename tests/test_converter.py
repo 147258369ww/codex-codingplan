@@ -357,9 +357,12 @@ class TestConverterResponseConversion:
         result = self.converter.to_responses_response(chat_response)
 
         assert result["output_text"] == ""
+        assert len(result["output"]) == 1
         assert result["output"][0]["type"] == "function_call"
+        assert result["output"][0]["id"].startswith("fc_")
         assert result["output"][0]["call_id"] == "call_123"
         assert result["output"][0]["name"] == "get_weather"
+        assert result["output"][0]["arguments"] == "{\"city\":\"Hangzhou\"}"
 
     def test_convert_response_with_text_and_tool_calls(self):
         chat_response = {
@@ -386,8 +389,12 @@ class TestConverterResponseConversion:
         result = self.converter.to_responses_response(chat_response)
 
         assert result["output_text"] == "Let me check."
+        assert len(result["output"]) == 2
         assert result["output"][0]["type"] == "message"
         assert result["output"][1]["type"] == "function_call"
+        assert result["output"][1]["id"].startswith("fc_")
+        assert result["output"][1]["call_id"] == "call_999"
+        assert result["output"][1]["arguments"] == "{\"city\":\"Suzhou\"}"
 
 
 class TestConverterStreamEvent:

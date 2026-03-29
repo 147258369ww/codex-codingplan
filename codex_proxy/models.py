@@ -53,6 +53,16 @@ class FunctionCallItem(BaseModel):
     arguments: str
 
 
+class ResponseFunctionCallItem(BaseModel):
+    """Function call item in Responses API output format."""
+
+    id: str
+    type: Literal["function_call"] = "function_call"
+    call_id: str
+    name: str
+    arguments: str
+
+
 class FunctionCallOutputItem(BaseModel):
     """Function call output item in Responses API format."""
 
@@ -110,7 +120,7 @@ class OutputMessage(BaseModel):
     content: list[OutputContent]
 
 
-OutputItem = Union[OutputMessage, FunctionCallItem]
+OutputItem = Union[OutputMessage, ResponseFunctionCallItem]
 
 
 class Usage(BaseModel):
