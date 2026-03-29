@@ -347,3 +347,25 @@ logging:
     assert config.logging.level == "WARNING"
     assert config.logging.console_level == "ERROR"
     assert config.logging.file_level == "DEBUG"
+
+
+@pytest.mark.parametrize("logging_value", ["bad", []])
+def test_malformed_logging_section_raises_configuration_error(tmp_path, logging_value):
+    """Test that malformed logging sections still raise ConfigurationError."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(f"""
+server:
+  host: "0.0.0.0"
+  port: 9000
+
+coding_plan:
+  base_url: "https://api.example.com/v1"
+  api_key: "test-key"
+  model: "test-model"
+  timeout: 120
+
+logging: {logging_value!r}
+""")
+
+    with pytest.raises(ConfigurationError):
+        Config.load(str(config_file))

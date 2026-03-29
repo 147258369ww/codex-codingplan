@@ -4,6 +4,7 @@ import os
 import re
 import logging
 from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -141,6 +142,10 @@ class Config:
 
         try:
             if "logging" in raw_config and raw_config["logging"] is not None:
+                if not isinstance(raw_config["logging"], Mapping):
+                    raise TypeError(
+                        f"logging section must be a mapping, got {type(raw_config['logging']).__name__}"
+                    )
                 logging_config_data = dict(raw_config["logging"])
                 if "console_level" not in logging_config_data:
                     logging_config_data["console_level"] = logging_config_data.get("level", LoggingConfig().level)
