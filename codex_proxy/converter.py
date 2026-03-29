@@ -47,16 +47,10 @@ class Converter:
         if responses_request.top_p is not None:
             request["top_p"] = responses_request.top_p
 
-        if responses_request.tool_choice is not None:
-            request["tool_choice"] = responses_request.tool_choice
-
-        if responses_request.parallel_tool_calls is not None:
-            request["parallel_tool_calls"] = responses_request.parallel_tool_calls
-
+        valid_tools = []
         if responses_request.tools is not None:
             # Filter tools to only include valid function tools
             # Chat Completions API requires type="function" with a "function" object
-            valid_tools = []
             for tool in responses_request.tools:
                 if isinstance(tool, dict):
                     if tool.get("type") == "function" and "function" in tool:
@@ -71,8 +65,12 @@ class Converter:
                                 "parameters": tool.get("parameters", {}),
                             }
                         })
-            if valid_tools:
-                request["tools"] = valid_tools
+        if valid_tools:
+            request["tools"] = valid_tools
+            if responses_request.tool_choice is not None:
+                request["tool_choice"] = responses_request.tool_choice
+            if responses_request.parallel_tool_calls is not None:
+                request["parallel_tool_calls"] = responses_request.parallel_tool_calls
 
         return request
 
@@ -134,10 +132,7 @@ class Converter:
             if isinstance(output, str):
                 content = output
             else:
-                try:
-                    content = json.dumps(output)
-                except TypeError:
-                    content = str(output)
+                content = json.dumps(output, default=str)
             return [{
                 "role": "tool",
                 "tool_call_id": data["call_id"],

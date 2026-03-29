@@ -102,6 +102,13 @@ class TestConverterRequestConversion:
                     "output": {"temperature": 26},
                 },
             ],
+            tools=[
+                {
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {"type": "object"},
+                }
+            ],
             tool_choice="auto",
             parallel_tool_calls=True,
         )
@@ -114,6 +121,31 @@ class TestConverterRequestConversion:
             "role": "tool",
             "tool_call_id": "call_123",
             "content": '{"temperature": 26}',
+        }
+
+    def test_convert_function_call_output_non_json_native_value_is_json_stringified(self):
+        class CustomOutput:
+            def __str__(self):
+                return "custom-output"
+
+        req = ResponsesRequest(
+            model="gpt-5",
+            input=[
+                {"type": "message", "role": "user", "content": "Weather?"},
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_789",
+                    "output": CustomOutput(),
+                },
+            ],
+        )
+
+        result = self.converter.to_chat_completions_request(req, "default-model")
+
+        assert result["messages"][1] == {
+            "role": "tool",
+            "tool_call_id": "call_789",
+            "content": '"custom-output"',
         }
 
     def test_convert_function_call_history_to_assistant_tool_calls(self):
@@ -158,6 +190,13 @@ class TestConverterRequestConversion:
         req = ResponsesRequest(
             model="gpt-5",
             input="test",
+            tools=[
+                {
+                    "type": "function",
+                    "name": "get_weather",
+                    "parameters": {"type": "object"},
+                }
+            ],
             tool_choice={
                 "type": "function",
                 "function": {"name": "get_weather"},
@@ -170,6 +209,24 @@ class TestConverterRequestConversion:
             "type": "function",
             "function": {"name": "get_weather"},
         }
+
+    def test_omit_tool_controls_when_no_valid_tools_remain(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input="test",
+            tools=[
+                {"type": "function"},
+                {"type": "web_search"},
+            ],
+            tool_choice="auto",
+            parallel_tool_calls=True,
+        )
+
+        result = self.converter.to_chat_completions_request(req, "default-model")
+
+        assert "tools" not in result
+        assert "tool_choice" not in result
+        assert "parallel_tool_calls" not in result
 
 
 class TestConverterResponseConversion:
