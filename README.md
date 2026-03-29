@@ -92,6 +92,12 @@ wire_api = "responses"
 | `/health` | GET | Health check - returns `{"status": "ok"}` |
 | `/v1/responses` | POST | Responses API entry point |
 
+## Logging
+
+The proxy writes compact request summary logs to the console and detailed diagnostic logs to `logs/codex-proxy.log`.
+
+Use the shared `request_id` in both sinks to match a console summary with its corresponding file entry.
+
 ## Testing
 
 Run all tests:
