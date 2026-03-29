@@ -91,6 +91,86 @@ class TestConverterRequestConversion:
         assert "tools" in result
         assert result["tools"] == tools
 
+    def test_convert_function_call_output_to_tool_message(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input=[
+                {"type": "message", "role": "user", "content": "Weather?"},
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_123",
+                    "output": {"temperature": 26},
+                },
+            ],
+            tool_choice="auto",
+            parallel_tool_calls=True,
+        )
+
+        result = self.converter.to_chat_completions_request(req, "default-model")
+
+        assert result["tool_choice"] == "auto"
+        assert result["parallel_tool_calls"] is True
+        assert result["messages"][1] == {
+            "role": "tool",
+            "tool_call_id": "call_123",
+            "content": '{"temperature": 26}',
+        }
+
+    def test_convert_function_call_history_to_assistant_tool_calls(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input=[
+                {"type": "message", "role": "user", "content": "Weather?"},
+                {
+                    "type": "function_call",
+                    "call_id": "call_456",
+                    "name": "get_weather",
+                    "arguments": '{"city": "Shanghai"}',
+                },
+            ],
+        )
+
+        result = self.converter.to_chat_completions_request(req, "default-model")
+
+        assert result["messages"][1]["role"] == "assistant"
+        assert result["messages"][1]["tool_calls"][0]["id"] == "call_456"
+        assert result["messages"][1]["tool_calls"][0]["function"]["name"] == "get_weather"
+
+    def test_convert_simplified_function_tools(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input="test",
+            tools=[
+                {
+                    "type": "function",
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "parameters": {"type": "object"},
+                }
+            ],
+        )
+
+        result = self.converter.to_chat_completions_request(req, "default-model")
+
+        assert result["tools"][0]["function"]["name"] == "get_weather"
+
+    def test_convert_dict_tool_choice_is_forwarded(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input="test",
+            tool_choice={
+                "type": "function",
+                "function": {"name": "get_weather"},
+            },
+        )
+
+        result = self.converter.to_chat_completions_request(req, "default-model")
+
+        assert result["tool_choice"] == {
+            "type": "function",
+            "function": {"name": "get_weather"},
+        }
+
 
 class TestConverterResponseConversion:
     def setup_method(self):

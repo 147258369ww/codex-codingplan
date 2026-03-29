@@ -1,5 +1,6 @@
 """API format converter between Responses API and Chat Completions API."""
 
+import json
 import time
 import uuid
 from typing import Any
@@ -45,6 +46,12 @@ class Converter:
 
         if responses_request.top_p is not None:
             request["top_p"] = responses_request.top_p
+
+        if responses_request.tool_choice is not None:
+            request["tool_choice"] = responses_request.tool_choice
+
+        if responses_request.parallel_tool_calls is not None:
+            request["parallel_tool_calls"] = responses_request.parallel_tool_calls
 
         if responses_request.tools is not None:
             # Filter tools to only include valid function tools
@@ -95,10 +102,52 @@ class Converter:
         else:
             # input_value is a list of messages
             for msg in input_value:
-                converted = self._convert_message(msg)
-                messages.append(converted)
+                messages.extend(self._convert_input_item(msg))
 
         return messages
+
+    def _convert_input_item(self, item: Any) -> list[dict[str, Any]]:
+        """Convert a single Responses input item to one or more chat messages."""
+        if hasattr(item, "model_dump"):
+            data = item.model_dump()
+        elif isinstance(item, dict):
+            data = item
+        else:
+            return [self._convert_message(item)]
+
+        item_type = data.get("type")
+        if item_type == "function_call":
+            return [{
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": data["call_id"],
+                    "type": "function",
+                    "function": {
+                        "name": data["name"],
+                        "arguments": data["arguments"],
+                    },
+                }],
+            }]
+        if item_type == "function_call_output":
+            output = data.get("output")
+            if isinstance(output, str):
+                content = output
+            else:
+                try:
+                    content = json.dumps(output)
+                except TypeError:
+                    content = str(output)
+            return [{
+                "role": "tool",
+                "tool_call_id": data["call_id"],
+                "content": content,
+            }]
+
+        if item_type == "message":
+            return [self._convert_message(data)]
+
+        return [self._convert_message(item)]
 
     def _convert_message(self, msg: Any) -> dict[str, Any]:
         """Convert a single message to Chat Completions format.
