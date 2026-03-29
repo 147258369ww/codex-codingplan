@@ -332,6 +332,63 @@ class TestConverterResponseConversion:
         assert len(result["output"]) == 1
         assert result["output"][0]["content"][0]["text"] == ""
 
+    def test_convert_response_with_tool_calls(self):
+        chat_response = {
+            "id": "chatcmpl-tool123",
+            "model": "qwen3.5-plus",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Hangzhou\"}",
+                        },
+                    }],
+                },
+                "finish_reason": "tool_calls",
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14},
+        }
+
+        result = self.converter.to_responses_response(chat_response)
+
+        assert result["output_text"] == ""
+        assert result["output"][0]["type"] == "function_call"
+        assert result["output"][0]["call_id"] == "call_123"
+        assert result["output"][0]["name"] == "get_weather"
+
+    def test_convert_response_with_text_and_tool_calls(self):
+        chat_response = {
+            "id": "chatcmpl-mixed123",
+            "model": "qwen3.5-plus",
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "Let me check.",
+                    "tool_calls": [{
+                        "id": "call_999",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":\"Suzhou\"}",
+                        },
+                    }],
+                },
+                "finish_reason": "tool_calls",
+            }],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 6, "total_tokens": 16},
+        }
+
+        result = self.converter.to_responses_response(chat_response)
+
+        assert result["output_text"] == "Let me check."
+        assert result["output"][0]["type"] == "message"
+        assert result["output"][1]["type"] == "function_call"
+
 
 class TestConverterStreamEvent:
     def setup_method(self):

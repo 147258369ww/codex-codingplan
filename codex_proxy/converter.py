@@ -209,23 +209,37 @@ class Converter:
         # Extract content with defensive check for empty choices
         choices = chat_response.get("choices", [])
         content_text = ""
+        tool_calls: list[dict[str, Any]] = []
         if choices:
             choice = choices[0]
             if "message" in choice:
-                content_text = choice["message"].get("content", "")
+                message = choice["message"]
+                content_text = message.get("content", "") or ""
+                tool_calls = message.get("tool_calls", []) or []
 
-        # Build output message
-        output_message = {
-            "id": "msg_" + str(uuid.uuid4())[:8],
-            "type": "message",
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "output_text",
-                    "text": content_text,
-                }
-            ],
-        }
+        # Build output items
+        output_items: list[dict[str, Any]] = []
+        if content_text or not choices or (choices and not tool_calls):
+            output_items.append({
+                "id": "msg_" + str(uuid.uuid4())[:8],
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": content_text,
+                    }
+                ],
+            })
+
+        for tool_call in tool_calls:
+            output_items.append({
+                "id": "fc_" + str(uuid.uuid4())[:8],
+                "type": "function_call",
+                "call_id": tool_call.get("id", ""),
+                "name": tool_call.get("function", {}).get("name", ""),
+                "arguments": tool_call.get("function", {}).get("arguments", ""),
+            })
 
         # Extract usage
         usage = chat_response.get("usage", {})
@@ -236,7 +250,7 @@ class Converter:
             "created_at": time.time(),
             "status": "completed",
             "model": chat_response.get("model", ""),
-            "output": [output_message],
+            "output": output_items,
             "output_text": content_text,
             "usage": {
                 "input_tokens": usage.get("prompt_tokens", 0),
