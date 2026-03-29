@@ -505,6 +505,33 @@ class TestConverterStreamEvent:
 
         assert result is None
 
+    def test_convert_stream_event_with_tool_call_delta(self):
+        chat_event = {
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"city\":",
+                        },
+                    }]
+                },
+                "finish_reason": None,
+            }]
+        }
+
+        result = self.converter.to_responses_stream_event(
+            chat_event, "resp_test", "gpt-5"
+        )
+
+        assert result is not None
+        assert result["type"] == "response.function_call_arguments.delta"
+        assert result["delta"] == "{\"city\":"
+        assert result["output_index"] == 0
+
     def test_create_completed_event(self):
         """Test creating response.completed event."""
         result = self.converter.create_completed_event(

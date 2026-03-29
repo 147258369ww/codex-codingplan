@@ -11,6 +11,11 @@ from codex_proxy.client import CodingPlanClient, CodingPlanAPIError
 from codex_proxy.config import Config
 from codex_proxy.converter import Converter
 from codex_proxy.models import ResponsesRequest
+from codex_proxy.tools import (
+    ToolCallState,
+    build_function_call_item,
+    get_or_create_tool_call_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,14 +126,148 @@ async def _stream_response(
     full_content = ""
     usage = {}
     sequence_number = 0
-    output_index = 0
     content_index = 0
-    initialized = False
+    created_sent = False
+    text_item_added = False
+    text_item_done = False
+    tool_call_states: dict[int, ToolCallState] = {}
 
     def next_seq():
         nonlocal sequence_number
         sequence_number += 1
         return sequence_number
+
+    def sse_event(payload: dict[str, Any]) -> str:
+        payload["sequence_number"] = next_seq()
+        return f"data: {json.dumps(payload)}\n\n"
+
+    def emit_response_created() -> list[str]:
+        nonlocal created_sent
+        if created_sent:
+            return []
+        created_sent = True
+        return [sse_event({
+            "type": "response.created",
+            "response": {
+                "id": response_id,
+                "object": "response",
+                "created_at": time.time(),
+                "status": "in_progress",
+                "model": model,
+            },
+        })]
+
+    def emit_text_item_added() -> list[str]:
+        nonlocal text_item_added
+        if text_item_added:
+            return []
+        text_item_added = True
+        return emit_response_created() + [
+            sse_event({
+                "type": "response.output_item.added",
+                "output_index": 0,
+                "item": {
+                    "id": item_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                },
+            }),
+            sse_event({
+                "type": "response.content_part.added",
+                "item_id": item_id,
+                "output_index": 0,
+                "content_index": content_index,
+                "part": {"type": "output_text", "text": ""},
+            }),
+        ]
+
+    def emit_tool_call_added(state: ToolCallState) -> list[str]:
+        if state.added_sent:
+            return []
+        state.added_sent = True
+        return emit_response_created() + [
+            sse_event({
+                "type": "response.output_item.added",
+                "output_index": state.index,
+                "item": build_function_call_item(state),
+            })
+        ]
+
+    def emit_text_done() -> list[str]:
+        nonlocal text_item_done
+        if not text_item_added or text_item_done:
+            return []
+        text_item_done = True
+        output_item = {
+            "id": item_id,
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": full_content}],
+        }
+        return [
+            sse_event({
+                "type": "response.output_text.done",
+                "item_id": item_id,
+                "output_index": 0,
+                "content_index": content_index,
+                "text": full_content,
+            }),
+            sse_event({
+                "type": "response.content_part.done",
+                "item_id": item_id,
+                "output_index": 0,
+                "content_index": content_index,
+                "part": {
+                    "type": "output_text",
+                    "text": full_content,
+                },
+            }),
+            sse_event({
+                "type": "response.output_item.done",
+                "output_index": 0,
+                "item": output_item,
+            }),
+        ]
+
+    def emit_tool_call_done(state: ToolCallState) -> list[str]:
+        if not state.added_sent or state.done_sent:
+            return []
+        state.done_sent = True
+        return [
+            sse_event({
+                "type": "response.function_call_arguments.done",
+                "item_id": state.item_id,
+                "output_index": state.index,
+                "arguments": state.arguments,
+            }),
+            sse_event({
+                "type": "response.output_item.done",
+                "output_index": state.index,
+                "item": build_function_call_item(state),
+            }),
+        ]
+
+    def emit_open_items_done() -> list[str]:
+        events = emit_text_done()
+        for index in sorted(tool_call_states):
+            events.extend(emit_tool_call_done(tool_call_states[index]))
+        return events
+
+    def build_completed_output_items() -> list[dict[str, Any]]:
+        output_items: list[dict[str, Any]] = []
+        if text_item_added:
+            output_items.append({
+                "id": item_id,
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": full_content}],
+            })
+        for index in sorted(tool_call_states):
+            state = tool_call_states[index]
+            if state.added_sent:
+                output_items.append(build_function_call_item(state))
+        return output_items
 
     try:
         stream = await client.chat(chat_request, stream=True)
@@ -148,46 +287,8 @@ async def _stream_response(
                 usage = event["usage"]
 
             if event.get("done"):
-                # Send completion events in correct order
-                # 1. response.output_text.done
-                text_done_event = {
-                    "type": "response.output_text.done",
-                    "item_id": item_id,
-                    "output_index": output_index,
-                    "content_index": content_index,
-                    "text": full_content,
-                    "sequence_number": next_seq(),
-                }
-                yield f"data: {json.dumps(text_done_event)}\n\n"
-
-                # 2. response.content_part.done
-                content_part_done = {
-                    "type": "response.content_part.done",
-                    "item_id": item_id,
-                    "output_index": output_index,
-                    "content_index": content_index,
-                    "part": {
-                        "type": "output_text",
-                        "text": full_content,
-                    },
-                    "sequence_number": next_seq(),
-                }
-                yield f"data: {json.dumps(content_part_done)}\n\n"
-
-                # 3. response.output_item.done
-                output_item = {
-                    "id": item_id,
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": full_content}],
-                }
-                output_item_done = {
-                    "type": "response.output_item.done",
-                    "output_index": output_index,
-                    "item": output_item,
-                    "sequence_number": next_seq(),
-                }
-                yield f"data: {json.dumps(output_item_done)}\n\n"
+                for payload in emit_open_items_done():
+                    yield payload
 
                 # 4. response.completed
                 logger.info("Stream done, sending completed event")
@@ -196,75 +297,58 @@ async def _stream_response(
                     model,
                     full_content,
                     usage,
+                    output_items=build_completed_output_items(),
                 )
                 yield f"data: {json.dumps(completed)}\n\n"
                 yield "data: [DONE]\n\n"
                 break
 
-            # Send initialization events on first content
-            if not initialized:
-                # 1. response.created
-                created_event = {
-                    "type": "response.created",
-                    "response": {
-                        "id": response_id,
-                        "object": "response",
-                        "created_at": time.time(),
-                        "status": "in_progress",
-                        "model": model,
-                    },
-                    "sequence_number": next_seq(),
-                }
-                yield f"data: {json.dumps(created_event)}\n\n"
+            choices = event.get("choices") or []
+            choice = choices[0] if choices else {}
+            delta = choice.get("delta", {}) or {}
+            finish_reason = choice.get("finish_reason")
 
-                # 2. response.output_item.added
-                output_item_added = {
-                    "type": "response.output_item.added",
-                    "output_index": output_index,
-                    "item": {
-                        "id": item_id,
-                        "type": "message",
-                        "role": "assistant",
-                        "content": [],
-                    },
-                    "sequence_number": next_seq(),
-                }
-                yield f"data: {json.dumps(output_item_added)}\n\n"
+            tool_calls = delta.get("tool_calls") or []
+            for tool_call in tool_calls:
+                state = get_or_create_tool_call_state(tool_call_states, tool_call)
+                for payload in emit_tool_call_added(state):
+                    yield payload
 
-                # 3. response.content_part.added
-                content_part_added = {
-                    "type": "response.content_part.added",
-                    "item_id": item_id,
-                    "output_index": output_index,
-                    "content_index": content_index,
-                    "part": {"type": "output_text", "text": ""},
-                    "sequence_number": next_seq(),
-                }
-                yield f"data: {json.dumps(content_part_added)}\n\n"
+                tool_event = converter.to_responses_stream_event(
+                    {"choices": [{"delta": {"tool_calls": [tool_call]}, "finish_reason": None}]},
+                    response_id,
+                    model,
+                )
+                if tool_event and tool_event.get("delta"):
+                    state.arguments += tool_event["delta"]
+                    tool_event["item_id"] = state.item_id
+                    tool_event["output_index"] = state.index
+                    yield sse_event(tool_event)
 
-                initialized = True
-
-            # Convert event
-            responses_event = converter.to_responses_stream_event(
-                event,
-                response_id,
-                model,
-            )
-
-            if responses_event:
-                # Add required fields to the event
-                responses_event["item_id"] = item_id
-                responses_event["content_index"] = content_index
-                responses_event["sequence_number"] = next_seq()
-
-                logger.debug("Converted event: %s", json.dumps(responses_event, ensure_ascii=False)[:200])
-                # Track content for final event
-                if responses_event.get("delta"):
+            text_delta = {
+                key: value
+                for key, value in delta.items()
+                if key != "tool_calls"
+            }
+            if text_delta:
+                responses_event = converter.to_responses_stream_event(
+                    {"choices": [{"delta": text_delta, "finish_reason": None}]},
+                    response_id,
+                    model,
+                )
+                if responses_event and responses_event.get("delta"):
+                    for payload in emit_text_item_added():
+                        yield payload
+                    responses_event["item_id"] = item_id
+                    responses_event["content_index"] = content_index
                     full_content += responses_event["delta"]
+                    yield sse_event(responses_event)
+                else:
+                    logger.debug("Event returned None (filtered out)")
 
-                yield f"data: {json.dumps(responses_event)}\n\n"
-            else:
-                logger.debug("Event returned None (filtered out)")
+            if finish_reason:
+                for payload in emit_open_items_done():
+                    yield payload
 
     except CodingPlanAPIError as e:
         # Yield error event for API errors during streaming

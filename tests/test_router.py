@@ -132,6 +132,31 @@ class TestRouter:
         assert "response.completed" in content
 
     @respx.mock
+    def test_streaming_tool_call_events(self, client):
+        respx.post("https://api.test.com/v1/chat/completions").mock(
+            return_value=Response(
+                200,
+                content=(
+                    b'data: {"id":"chatcmpl-test","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","type":"function","function":{"name":"get_weather","arguments":"{\\"city\\":"}}]}}]}\n\n'
+                    b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\\"Hangzhou\\"}"}}]}}]}\n\n'
+                    b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+                    b'data: [DONE]\n\n'
+                ),
+                headers={"content-type": "text/event-stream"},
+            )
+        )
+
+        response = client.post(
+            "/v1/responses",
+            json={"model": "gpt-5", "input": "Weather?", "stream": True},
+        )
+        content = response.content.decode()
+
+        assert "response.function_call_arguments.delta" in content
+        assert "response.function_call_arguments.done" in content
+        assert "response.output_item.done" in content
+
+    @respx.mock
     def test_api_error_unauthorized(self, client):
         """Test API error (401 Unauthorized) is properly returned."""
         respx.post("https://api.test.com/v1/chat/completions").mock(

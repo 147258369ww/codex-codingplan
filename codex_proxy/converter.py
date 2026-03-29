@@ -283,12 +283,24 @@ class Converter:
         delta = choice.get("delta", {})
         finish_reason = choice.get("finish_reason")
 
+        tool_calls = delta.get("tool_calls") or []
+        for tool_call in tool_calls:
+            arguments = (tool_call.get("function") or {}).get("arguments")
+            if arguments:
+                return {
+                    "type": "response.function_call_arguments.delta",
+                    "delta": arguments,
+                    "output_index": tool_call.get("index", 0),
+                }
+
         # Skip role-only events
         if "role" in delta and "content" not in delta and "reasoning_content" not in delta and not finish_reason:
             return None
 
         # Handle finish
         if finish_reason:
+            if finish_reason == "tool_calls":
+                return None
             return {
                 "type": "response.output_text.done",
                 "output_index": 0,
@@ -321,6 +333,7 @@ class Converter:
         model: str,
         full_content: str,
         usage: dict[str, int],
+        output_items: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Create a response.completed event.
 
@@ -333,18 +346,18 @@ class Converter:
         Returns:
             response.completed event dict.
         """
-        # Build output message
-        output_message = {
-            "id": "msg_" + str(uuid.uuid4())[:8],
-            "type": "message",
-            "role": "assistant",
-            "content": [
-                {
-                    "type": "output_text",
-                    "text": full_content,
-                }
-            ],
-        }
+        if output_items is None:
+            output_items = [{
+                "id": "msg_" + str(uuid.uuid4())[:8],
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": full_content,
+                    }
+                ],
+            }]
 
         response = {
             "id": response_id,
@@ -352,7 +365,7 @@ class Converter:
             "created_at": time.time(),
             "status": "completed",
             "model": model,
-            "output": [output_message],
+            "output": output_items,
             "output_text": full_content,
             "usage": {
                 "input_tokens": usage.get("prompt_tokens", 0),
