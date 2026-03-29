@@ -58,7 +58,7 @@ class FunctionCallOutputItem(BaseModel):
 
     type: Literal["function_call_output"] = "function_call_output"
     call_id: str
-    output: str
+    output: Any
 
 
 # Legacy Message for backwards compatibility
@@ -67,6 +67,8 @@ class Message(BaseModel):
 
     role: Literal["system", "user", "assistant", "developer", "tool"]
     content: Union[str, list[InputContent]]
+
+    model_config = ConfigDict(extra="forbid")
 
 
 RequestInputItem = Union[InputMessage, Message, FunctionCallItem, FunctionCallOutputItem]

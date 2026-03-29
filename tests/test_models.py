@@ -1,6 +1,8 @@
 # codex-proxy/tests/test_models.py
 import pytest
+from pydantic import ValidationError
 from codex_proxy.models import (
+    FunctionCallItem,
     Message,
     ResponsesRequest,
     ResponsesResponse,
@@ -56,7 +58,7 @@ class TestResponsesRequest:
                 {
                     "type": "function_call_output",
                     "call_id": "call_123",
-                    "output": '{"temperature": 26}',
+                    "output": {"temperature": 26},
                 },
             ],
         )
@@ -64,6 +66,25 @@ class TestResponsesRequest:
         assert len(req.input) == 2
         assert req.input[1].type == "function_call_output"
         assert req.input[1].call_id == "call_123"
+        assert req.input[1].output == {"temperature": 26}
+
+    def test_request_accepts_function_call_items(self):
+        req = ResponsesRequest(
+            model="gpt-5",
+            input=[
+                {
+                    "type": "function_call",
+                    "call_id": "call_456",
+                    "name": "get_weather",
+                    "arguments": '{"city":"Berlin"}',
+                }
+            ],
+        )
+
+        assert len(req.input) == 1
+        assert req.input[0].type == "function_call"
+        assert req.input[0].name == "get_weather"
+        assert isinstance(req.input[0], FunctionCallItem)
 
     def test_request_accepts_tool_choice_and_parallel_tool_calls(self):
         req = ResponsesRequest(
@@ -75,6 +96,15 @@ class TestResponsesRequest:
 
         assert req.tool_choice == "auto"
         assert req.parallel_tool_calls is True
+
+    def test_request_rejects_malformed_typed_items(self):
+        with pytest.raises(ValidationError):
+            ResponsesRequest(
+                model="gpt-5",
+                input=[
+                    {"type": "mesage", "role": "user", "content": "x"},
+                ],
+            )
 
 
 class TestResponsesResponse:
