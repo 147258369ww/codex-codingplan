@@ -21,6 +21,20 @@ from codex_proxy.logging_utils import ConsoleFormatter, should_use_color
 logger = logging.getLogger(__name__)
 
 
+def _close_and_remove_handlers(logger_obj: logging.Logger) -> None:
+    """Flush, close, and detach handlers from a logger."""
+    for handler in list(logger_obj.handlers):
+        try:
+            handler.flush()
+        except Exception:
+            pass
+        try:
+            handler.close()
+        except Exception:
+            pass
+        logger_obj.removeHandler(handler)
+
+
 def configure_logging(
     config: Config,
     log_dir: Path | None = None,
@@ -31,7 +45,7 @@ def configure_logging(
     log_dir.mkdir(parents=True, exist_ok=True)
 
     root_logger = logging.getLogger()
-    root_logger.handlers.clear()
+    _close_and_remove_handlers(root_logger)
     root_logger.setLevel(logging.DEBUG)
 
     file_level = getattr(logging, config.logging.file_level.upper())
@@ -48,7 +62,7 @@ def configure_logging(
 
     console_level = getattr(logging, config.logging.console_level.upper())
     console_logger = logging.getLogger("codex_proxy.console")
-    console_logger.handlers.clear()
+    _close_and_remove_handlers(console_logger)
     console_logger.setLevel(console_level)
     console_logger.propagate = False
 

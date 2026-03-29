@@ -3,6 +3,7 @@
 
 import io
 import logging
+import sys
 
 import pytest
 from logging.handlers import TimedRotatingFileHandler
@@ -10,6 +11,50 @@ from logging.handlers import TimedRotatingFileHandler
 from codex_proxy.config import Config, ServerConfig, CodingPlanConfig, LoggingConfig
 from codex_proxy.logging_utils import ConsoleFormatter
 from codex_proxy.main import configure_logging, create_app
+
+
+@pytest.fixture(autouse=True)
+def restore_logging_state():
+    root_logger = logging.getLogger()
+    console_logger = logging.getLogger("codex_proxy.console")
+
+    original_state = {
+        root_logger: {
+            "level": root_logger.level,
+            "propagate": root_logger.propagate,
+            "disabled": root_logger.disabled,
+            "handlers": list(root_logger.handlers),
+        },
+        console_logger: {
+            "level": console_logger.level,
+            "propagate": console_logger.propagate,
+            "disabled": console_logger.disabled,
+            "handlers": list(console_logger.handlers),
+        },
+    }
+
+    yield
+
+    for logger, state in original_state.items():
+        current_handlers = list(logger.handlers)
+        for handler in current_handlers:
+            logger.removeHandler(handler)
+            if handler not in state["handlers"]:
+                try:
+                    handler.flush()
+                except Exception:
+                    pass
+                try:
+                    handler.close()
+                except Exception:
+                    pass
+
+        logger.setLevel(state["level"])
+        logger.propagate = state["propagate"]
+        logger.disabled = state["disabled"]
+
+        for handler in state["handlers"]:
+            logger.addHandler(handler)
 
 
 def test_create_app():
@@ -119,6 +164,73 @@ def test_configure_logging_writes_console_summary_to_console_logger_only(tmp_pat
     assert "file message" not in output
     assert "file message" in file_output
     assert "done  status=200" not in file_output
+
+
+def test_configure_logging_closes_replaced_handlers(tmp_path):
+    config = Config(
+        server=ServerConfig(host="127.0.0.1", port=8080),
+        coding_plan=CodingPlanConfig(
+            base_url="https://api.test.com/v1",
+            api_key="test-key",
+            model="test-model",
+            timeout=30,
+        ),
+        logging=LoggingConfig(),
+    )
+
+    class TrackingFileHandler(TimedRotatingFileHandler):
+        def __init__(self, filename):
+            super().__init__(filename, when="midnight", interval=1, backupCount=1, encoding="utf-8")
+            self.closed_called = False
+
+        def close(self):
+            self.closed_called = True
+            super().close()
+
+    class TrackingStreamHandler(logging.StreamHandler):
+        def __init__(self):
+            super().__init__(io.StringIO())
+            self.closed_called = False
+
+        def close(self):
+            self.closed_called = True
+            super().close()
+
+    root_logger = logging.getLogger()
+    console_logger = logging.getLogger("codex_proxy.console")
+
+    old_file_handler = TrackingFileHandler(tmp_path / "old.log")
+    old_console_handler = TrackingStreamHandler()
+    root_logger.addHandler(old_file_handler)
+    console_logger.addHandler(old_console_handler)
+
+    configure_logging(config, log_dir=tmp_path, console_stream=io.StringIO())
+
+    assert old_file_handler.closed_called is True
+    assert old_console_handler.closed_called is True
+
+
+def test_console_formatter_includes_exception_text():
+    formatter = ConsoleFormatter(use_color=False)
+
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        record = logging.LogRecord(
+            name="codex_proxy.console",
+            level=logging.ERROR,
+            pathname=__file__,
+            lineno=1,
+            msg="failed request",
+            args=(),
+            exc_info=sys.exc_info(),
+        )
+
+    formatted = formatter.format(record)
+
+    assert "failed request" in formatted
+    assert "ValueError: boom" in formatted
+    assert "Traceback" in formatted
 
 
 @pytest.mark.asyncio

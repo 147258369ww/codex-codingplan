@@ -69,4 +69,9 @@ class ConsoleFormatter(logging.Formatter):
             if color is not None:
                 level = f"{color}{level}{self.RESET}"
         request_id = getattr(record, "request_id", "-")
-        return f"{timestamp}  {level}  {request_id:<8}  {record.getMessage()}"
+        message = f"{timestamp}  {level}  {request_id:<8}  {record.getMessage()}"
+        if record.exc_info:
+            message += "\n" + self.formatException(record.exc_info)
+        if record.stack_info:
+            message += "\n" + self.formatStack(record.stack_info)
+        return message
