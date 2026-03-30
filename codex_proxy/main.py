@@ -181,6 +181,20 @@ def run():
     configure_logging(config)
     app = create_app(config)
 
+    console_logger.info(
+        "listening on http://%s:%s default_model=%s",
+        config.server.host,
+        config.server.port,
+        config.coding_plan.model,
+    )
+    logger.info(
+        "server.starting host=%s port=%s default_model=%s base_url=%s",
+        config.server.host,
+        config.server.port,
+        config.coding_plan.model,
+        config.coding_plan.base_url,
+    )
+
     uvicorn.run(
         app,
         host=config.server.host,

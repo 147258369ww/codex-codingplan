@@ -401,3 +401,35 @@ def test_run_disables_uvicorn_console_and_access_logging(monkeypatch):
     assert kwargs["port"] == config.server.port
     assert kwargs["log_config"] is None
     assert kwargs["access_log"] is False
+
+
+def test_run_logs_startup_summary_to_console(monkeypatch):
+    config = Config(
+        server=ServerConfig(host="127.0.0.1", port=8080),
+        coding_plan=CodingPlanConfig(
+            base_url="https://api.test.com/v1",
+            api_key="test-key",
+            model="test-model",
+            timeout=30,
+        ),
+        logging=LoggingConfig(),
+    )
+
+    load_mock = Mock(return_value=config)
+    configure_mock = Mock()
+    uvicorn_mock = Mock()
+    console_info_mock = Mock()
+
+    monkeypatch.setattr("codex_proxy.main.Config.load", load_mock)
+    monkeypatch.setattr("codex_proxy.main.configure_logging", configure_mock)
+    monkeypatch.setattr("codex_proxy.main.uvicorn.run", uvicorn_mock)
+    monkeypatch.setattr("codex_proxy.main.console_logger.info", console_info_mock)
+
+    run()
+
+    console_info_mock.assert_any_call(
+        "listening on http://%s:%s default_model=%s",
+        config.server.host,
+        config.server.port,
+        config.coding_plan.model,
+    )
