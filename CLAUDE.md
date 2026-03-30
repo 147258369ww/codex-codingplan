@@ -52,6 +52,7 @@ OpenAI Responses API request → /v1/responses endpoint
 | `models.py` | Pydantic models for Responses API request/response types |
 | `config.py` | YAML configuration with `${ENV_VAR}` substitution, model mapping |
 | `tools.py` | Tool-calling streaming state helpers and Responses function-call item builders |
+| `logging_utils.py` | Request ID generation, payload truncation, console formatter with ANSI color support |
 
 ### Key Format Conversions
 
